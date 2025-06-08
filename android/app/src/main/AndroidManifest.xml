@@ -13,9 +13,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     
     <application
-        android:label="hackathon"
+        android:label="EcoLink"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/launcher_icon">
         
         <!-- Google Maps API key should be inside application, outside of activity -->
         <meta-data 

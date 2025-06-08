@@ -3,6 +3,8 @@ import 'package:firebase_database/firebase_database.dart';
 import '../services/auth_service.dart';
 import '../services/friends_service.dart';
 import '../screens/pollution_tracker_screen.dart';
+import '../screens/food_locator.dart';
+import '../widgets/modern_bottom_nav.dart';
 
 
 class EcoChallengesScreen extends StatefulWidget {
@@ -19,9 +21,26 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _friendsLeaderboard = [];
   bool _showLeaderboard = false;
+  String _selectedCategory = 'All';
+  int _currentIndex = 1;
 
   // Colors
   static const Color greenColor = Color(0xFF00A74C);
+
+  // Add category list
+  final List<String> _categories = [
+    'All',
+    'Shopping',
+    'Waste Reduction',
+    'Transportation',
+    'Local Support',
+    'Nutrition',
+    'Growing',
+    'Community',
+    'Energy',
+    'Water',
+    'Education',
+  ];
 
   final List<Map<String, dynamic>> _challenges = [
     {
@@ -131,6 +150,276 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
       'icon': Icons.volunteer_activism,
       'color': Colors.deepPurple,
       'category': 'Community',
+    },
+    {
+      'id': 'plastic_free_week',
+      'title': 'Plastic-Free Week',
+      'description': 'Complete a week without buying any plastic-packaged food',
+      'points': 50,
+      'icon': Icons.delete_outline,
+      'color': Colors.green,
+      'category': 'Shopping',
+    },
+    {
+      'id': 'seasonal_shopping',
+      'title': 'Seasonal Shopper',
+      'description': 'Buy only seasonal produce for a week',
+      'points': 30,
+      'icon': Icons.calendar_today,
+      'color': Colors.green,
+      'category': 'Shopping',
+    },
+    {
+      'id': 'package_free',
+      'title': 'Package-Free Pioneer',
+      'description': 'Buy food from a package-free store',
+      'points': 25,
+      'icon': Icons.inventory_2,
+      'color': Colors.green,
+      'category': 'Shopping',
+    },
+    {
+      'id': 'zero_waste_week',
+      'title': 'Zero Waste Week',
+      'description': 'Generate no food waste for an entire week',
+      'points': 75,
+      'icon': Icons.delete_sweep,
+      'color': Colors.orange,
+      'category': 'Waste Reduction',
+    },
+    {
+      'id': 'food_scrap_art',
+      'title': 'Food Scrap Artist',
+      'description': 'Create art or crafts from food scraps',
+      'points': 35,
+      'icon': Icons.brush,
+      'color': Colors.orange,
+      'category': 'Waste Reduction',
+    },
+    {
+      'id': 'reuse_containers',
+      'title': 'Container Reuse Master',
+      'description': 'Reuse food containers for 10 different purposes',
+      'points': 40,
+      'icon': Icons.recycling,
+      'color': Colors.orange,
+      'category': 'Waste Reduction',
+    },
+    {
+      'id': 'bike_grocery',
+      'title': 'Bike Grocery Run',
+      'description': 'Use a bicycle for all grocery shopping for a week',
+      'points': 45,
+      'icon': Icons.pedal_bike,
+      'color': Colors.blue,
+      'category': 'Transportation',
+    },
+    {
+      'id': 'public_transport_food',
+      'title': 'Public Transport Foodie',
+      'description': 'Use public transport for all food shopping for a week',
+      'points': 30,
+      'icon': Icons.directions_bus,
+      'color': Colors.blue,
+      'category': 'Transportation',
+    },
+    {
+      'id': 'walking_distance',
+      'title': 'Walking Distance Warrior',
+      'description': 'Only shop at food stores within walking distance for a week',
+      'points': 35,
+      'icon': Icons.directions_walk,
+      'color': Colors.blue,
+      'category': 'Transportation',
+    },
+    {
+      'id': 'farm_visit',
+      'title': 'Farm Visitor',
+      'description': 'Visit a local farm and buy directly from them',
+      'points': 40,
+      'icon': Icons.agriculture,
+      'color': Colors.purple,
+      'category': 'Local Support',
+    },
+    {
+      'id': 'local_restaurant',
+      'title': 'Local Restaurant Explorer',
+      'description': 'Try 5 different local restaurants that source local ingredients',
+      'points': 50,
+      'icon': Icons.restaurant,
+      'color': Colors.purple,
+      'category': 'Local Support',
+    },
+    {
+      'id': 'food_coop',
+      'title': 'Food Co-op Member',
+      'description': 'Join a local food co-op and make your first purchase',
+      'points': 35,
+      'icon': Icons.group_work,
+      'color': Colors.purple,
+      'category': 'Local Support',
+    },
+    {
+      'id': 'plant_based_week',
+      'title': 'Plant-Based Week',
+      'description': 'Eat only plant-based meals for a week',
+      'points': 60,
+      'icon': Icons.eco,
+      'color': Colors.lightGreen,
+      'category': 'Nutrition',
+    },
+    {
+      'id': 'seasonal_diet',
+      'title': 'Seasonal Diet',
+      'description': 'Eat only seasonal foods for a week',
+      'points': 40,
+      'icon': Icons.calendar_month,
+      'color': Colors.lightGreen,
+      'category': 'Nutrition',
+    },
+    {
+      'id': 'whole_foods',
+      'title': 'Whole Foods Week',
+      'description': 'Eat only whole, unprocessed foods for a week',
+      'points': 45,
+      'icon': Icons.spa,
+      'color': Colors.lightGreen,
+      'category': 'Nutrition',
+    },
+    {
+      'id': 'vegetable_garden',
+      'title': 'Vegetable Garden',
+      'description': 'Start and maintain a vegetable garden',
+      'points': 75,
+      'icon': Icons.park,
+      'color': Colors.green,
+      'category': 'Growing',
+    },
+    {
+      'id': 'indoor_herbs',
+      'title': 'Indoor Herb Master',
+      'description': 'Grow 5 different herbs indoors',
+      'points': 40,
+      'icon': Icons.window,
+      'color': Colors.green,
+      'category': 'Growing',
+    },
+    {
+      'id': 'seed_saving',
+      'title': 'Seed Saver',
+      'description': 'Save seeds from 3 different plants',
+      'points': 30,
+      'icon': Icons.grass,
+      'color': Colors.green,
+      'category': 'Growing',
+    },
+    {
+      'id': 'food_swap',
+      'title': 'Food Swap Organizer',
+      'description': 'Organize a community food swap event',
+      'points': 60,
+      'icon': Icons.swap_horiz,
+      'color': Colors.pink,
+      'category': 'Community',
+    },
+    {
+      'id': 'cooking_class',
+      'title': 'Sustainable Cooking Teacher',
+      'description': 'Teach a sustainable cooking class',
+      'points': 55,
+      'icon': Icons.school,
+      'color': Colors.pink,
+      'category': 'Community',
+    },
+    {
+      'id': 'community_garden',
+      'title': 'Community Gardener',
+      'description': 'Participate in a community garden project',
+      'points': 45,
+      'icon': Icons.people,
+      'color': Colors.pink,
+      'category': 'Community',
+    },
+    {
+      'id': 'solar_cooking',
+      'title': 'Solar Cooker',
+      'description': 'Cook a meal using solar energy',
+      'points': 40,
+      'icon': Icons.wb_sunny,
+      'color': Colors.amber,
+      'category': 'Energy',
+    },
+    {
+      'id': 'energy_efficient',
+      'title': 'Energy-Efficient Chef',
+      'description': 'Use energy-efficient cooking methods for a week',
+      'points': 35,
+      'icon': Icons.electric_bolt,
+      'color': Colors.amber,
+      'category': 'Energy',
+    },
+    {
+      'id': 'batch_cooking',
+      'title': 'Batch Cooking Master',
+      'description': 'Cook multiple meals at once to save energy',
+      'points': 30,
+      'icon': Icons.restaurant_menu,
+      'color': Colors.amber,
+      'category': 'Energy',
+    },
+    {
+      'id': 'water_saving_cook',
+      'title': 'Water-Saving Cook',
+      'description': 'Reduce water usage in cooking by 50% for a week',
+      'points': 35,
+      'icon': Icons.water_drop,
+      'color': Colors.blue,
+      'category': 'Water',
+    },
+    {
+      'id': 'rainwater_garden',
+      'title': 'Rainwater Gardener',
+      'description': 'Use collected rainwater for your garden',
+      'points': 40,
+      'icon': Icons.water,
+      'color': Colors.blue,
+      'category': 'Water',
+    },
+    {
+      'id': 'water_reuse',
+      'title': 'Water Reuse Expert',
+      'description': 'Reuse cooking water for plants or cleaning',
+      'points': 25,
+      'icon': Icons.recycling,
+      'color': Colors.blue,
+      'category': 'Water',
+    },
+    {
+      'id': 'food_waste_workshop',
+      'title': 'Food Waste Workshop',
+      'description': 'Attend a workshop on reducing food waste',
+      'points': 30,
+      'icon': Icons.school,
+      'color': Colors.indigo,
+      'category': 'Education',
+    },
+    {
+      'id': 'sustainable_cooking',
+      'title': 'Sustainable Cooking Course',
+      'description': 'Complete an online course on sustainable cooking',
+      'points': 45,
+      'icon': Icons.menu_book,
+      'color': Colors.indigo,
+      'category': 'Education',
+    },
+    {
+      'id': 'food_system',
+      'title': 'Food System Student',
+      'description': 'Learn about local food systems and share knowledge',
+      'points': 35,
+      'icon': Icons.lightbulb,
+      'color': Colors.indigo,
+      'category': 'Education',
     },
   ];
 
@@ -383,6 +672,30 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
     }
   }
 
+  void _onNavTap(int index) {
+    if (index == _currentIndex) return;
+    
+    switch (index) {
+      case 0:
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => FoodLocatorScreen(),
+          ),
+        );
+        break;
+      case 1:
+        // Already on Eco Challenges
+        break;
+      case 2:
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => PollutionTrackerScreen(),
+          ),
+        );
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -408,7 +721,10 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
             ],
           ),
         ),
-        bottomNavigationBar: _buildBottomNavigation(),
+        bottomNavigationBar: ModernBottomNav(
+          currentIndex: _currentIndex,
+          onTap: _onNavTap,
+        ),
       );
     }
 
@@ -508,7 +824,10 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: _buildBottomNavigation(),
+      bottomNavigationBar: ModernBottomNav(
+        currentIndex: _currentIndex,
+        onTap: _onNavTap,
+      ),
     );
   }
 
@@ -544,125 +863,169 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
   }
 
   Widget _buildChallengesList() {
-    return ListView.builder(
-      padding: EdgeInsets.all(16),
-      itemCount: _challenges.length,
-      itemBuilder: (context, index) {
-        final challenge = _challenges[index];
-        final isCompleted = _completedChallenges[challenge['id']] == true;
+    // Filter challenges based on selected category
+    final filteredChallenges = _selectedCategory == 'All'
+        ? _challenges
+        : _challenges.where((challenge) => challenge['category'] == _selectedCategory).toList();
 
-        return Card(
-          margin: EdgeInsets.only(bottom: 12),
-          elevation: 2,
-          child: ListTile(
-            contentPadding: EdgeInsets.all(16),
-            leading: Container(
-              padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isCompleted 
-                    ? Colors.grey[300] 
-                    : challenge['color'].withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                challenge['icon'],
-                color: isCompleted 
-                    ? Colors.grey[600] 
-                    : challenge['color'],
-                size: 24,
-              ),
-            ),
-            title: Text(
-              challenge['title'],
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                decoration: isCompleted 
-                    ? TextDecoration.lineThrough 
-                    : null,
-                color: isCompleted ? Colors.grey[600] : null,
-              ),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(height: 4),
-                Text(
-                  challenge['description'],
-                  style: TextStyle(
-                    color: isCompleted ? Colors.grey[600] : null,
+    return Column(
+      children: [
+        // Category Filter
+        Container(
+          height: 50,
+          margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: _categories.length,
+            itemBuilder: (context, index) {
+              final category = _categories[index];
+              final isSelected = category == _selectedCategory;
+              return Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(category),
+                  selected: isSelected,
+                  onSelected: (selected) {
+                    if (selected) {
+                      setState(() {
+                        _selectedCategory = category;
+                      });
+                    }
+                  },
+                  backgroundColor: Colors.grey[200],
+                  selectedColor: greenColor.withOpacity(0.2),
+                  labelStyle: TextStyle(
+                    color: isSelected ? greenColor : Colors.grey[700],
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
-                SizedBox(height: 8),
-              Row(
-  children: [
-    // Category Chip
-    Flexible(
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: challenge['color'].withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text(
-          challenge['category'],
-          style: TextStyle(
-            color: challenge['color'],
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            overflow: TextOverflow.ellipsis, // Add this
+              );
+            },
           ),
-          maxLines: 1,
         ),
-      ),
-    ),
-    SizedBox(width: 8),
-    // Points Label
-    Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.star, color: Colors.amber, size: 16),
-        SizedBox(width: 4),
-        Text(
-          '${challenge['points']} pts',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.amber[700],
-            overflow: TextOverflow.ellipsis, // Add this for safety
+        // Challenges List
+        Expanded(
+          child: ListView.builder(
+            padding: EdgeInsets.all(16),
+            itemCount: filteredChallenges.length,
+            itemBuilder: (context, index) {
+              final challenge = filteredChallenges[index];
+              final isCompleted = _completedChallenges[challenge['id']] == true;
+
+              return Card(
+                margin: EdgeInsets.only(bottom: 12),
+                elevation: 2,
+                child: ListTile(
+                  contentPadding: EdgeInsets.all(16),
+                  leading: Container(
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isCompleted 
+                          ? Colors.grey[300] 
+                          : challenge['color'].withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      challenge['icon'],
+                      color: isCompleted 
+                          ? Colors.grey[600] 
+                          : challenge['color'],
+                      size: 24,
+                    ),
+                  ),
+                  title: Text(
+                    challenge['title'],
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      decoration: isCompleted 
+                          ? TextDecoration.lineThrough 
+                          : null,
+                      color: isCompleted ? Colors.grey[600] : null,
+                    ),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(height: 4),
+                      Text(
+                        challenge['description'],
+                        style: TextStyle(
+                          color: isCompleted ? Colors.grey[600] : null,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Row(
+                        children: [
+                          // Category Chip
+                          Flexible(
+                            child: Container(
+                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: challenge['color'].withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                challenge['category'],
+                                style: TextStyle(
+                                  color: challenge['color'],
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                maxLines: 1,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          // Points Label
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.star, color: Colors.amber, size: 16),
+                              SizedBox(width: 4),
+                              Text(
+                                '${challenge['points']} pts',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.amber[700],
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                maxLines: 1,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  trailing: isCompleted
+                      ? Icon(
+                          Icons.check_circle,
+                          color: greenColor,
+                          size: 28,
+                        )
+                      : ElevatedButton(
+                          onPressed: () => _completeChallenge(
+                            challenge['id'],
+                            challenge['points'],
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: greenColor,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                          ),
+                          child: Text('Complete'),
+                        ),
+                ),
+              );
+            },
           ),
-          maxLines: 1,
         ),
       ],
-    ),
-  ],
-)
-
-              ],
-            ),
-            trailing: isCompleted
-                ? Icon(
-                    Icons.check_circle,
-                    color: greenColor,
-                    size: 28,
-                  )
-                : ElevatedButton(
-                    onPressed: () => _completeChallenge(
-                      challenge['id'],
-                      challenge['points'],
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: greenColor,
-                      foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                    ),
-                    child: Text('Complete'),
-                  ),
-          ),
-        );
-      },
     );
   }
 
@@ -898,125 +1261,5 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
         return null;
     }
     return Icon(icon, color: color, size: 28);
-  }
-
-  Widget _buildBottomNavigation() {
-    return Container(
-      height: 80,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 8,
-            offset: Offset(0, -2),
-          ),
-        ],
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                Navigator.of(context).pop();
-              },
-              child: Container(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.map, color: Colors.blue[600], size: 24),
-                    SizedBox(height: 4),
-                    Text(
-                      'Food Map',
-                      style: TextStyle(
-                        color: Colors.blue[600],
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 40,
-            color: Colors.grey[300],
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                _showSnackBar('You are already on the Eco Challenges screen', greenColor);
-              },
-              child: Container(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: greenColor.withOpacity(0.07),
-                  border: Border.all(
-                    color: greenColor.withOpacity(0.3),
-                    width: 2,
-                  ),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.eco, color: greenColor, size: 24),
-                    SizedBox(height: 4),
-                    Text(
-                      'Eco Challenges',
-                      style: TextStyle(
-                        color: greenColor,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 40,
-            color: Colors.grey[300],
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(
-                    builder: (context) => PollutionTrackerScreen(),
-                  ),
-                );
-              },
-              child: Container(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.report_problem, color: Colors.red[700], size: 24),
-                    SizedBox(height: 4),
-                    Text(
-                      'Pollution',
-                      style: TextStyle(
-                        color: Colors.red[700],
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

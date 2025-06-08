@@ -1,29 +1,35 @@
 import 'package:firebase_database/firebase_database.dart';
 import 'auth_service.dart';
 
+/// Represents the possible states of a friendship between two users
 enum FriendshipStatus {
-  none,
-  pending, // I sent a request
-  requested, // They sent me a request
-  friends,
+  none,      // No friendship or request exists
+  pending,   // Current user has sent a friend request
+  requested, // Other user has sent a friend request
+  friends,   // Users are friends
 }
 
+/// Service class that handles all friend-related operations
+/// Manages friend requests, friendships, and friend lists
 class FriendsService {
   final DatabaseReference _database = FirebaseDatabase.instance.ref();
   final AuthService _authService = AuthService();
 
-  // Get current user info
+  /// Returns the current user's unique identifier
   String get currentUserId => _authService.currentUserId ?? 'unknown';
+  
+  /// Returns the current user's display name
   String get currentUserName => _authService.currentUserDisplayName;
 
-  // Generate consistent request ID for two users
+  /// Generates a consistent request ID for two users
+  /// Ensures same ID regardless of who sends the request
   String _generateRequestId(String user1Id, String user2Id) {
-    // Always put the smaller user ID first for consistency
     final sortedIds = [user1Id, user2Id]..sort();
     return 'req_${sortedIds[0]}_${sortedIds[1]}';
   }
 
-  // Send a friend request
+  /// Sends a friend request to another user
+  /// Creates request records for both users and updates their request lists
   Future<void> sendFriendRequest({
     required String recipientId,
     required String recipientName,
@@ -33,7 +39,7 @@ class FriendsService {
         throw Exception('Cannot send friend request to yourself');
       }
 
-      // Check if already friends or request exists
+      // Verify no existing friendship or request
       final existingStatus = await getFriendshipStatus(recipientId);
       if (existingStatus != FriendshipStatus.none) {
         throw Exception('Friend request already exists or you are already friends');
@@ -42,7 +48,7 @@ class FriendsService {
       final requestId = _generateRequestId(currentUserId, recipientId);
       final timestamp = ServerValue.timestamp;
 
-      // Create friend request data
+      // Create friend request data structure
       final requestData = {
         'id': requestId,
         'senderId': currentUserId,
@@ -55,13 +61,13 @@ class FriendsService {
 
       print('Sending friend request: $requestData');
 
-      // Save to friend requests
+      // Store request in friend requests collection
       await _database
           .child('friendRequests')
           .child(requestId)
           .set(requestData);
 
-      // Update sender's outgoing requests
+      // Update sender's outgoing requests list
       await _database
           .child('userFriendRequests')
           .child(currentUserId)
@@ -75,7 +81,7 @@ class FriendsService {
         'status': 'pending',
       });
 
-      // Update recipient's incoming requests
+      // Update recipient's incoming requests list
       await _database
           .child('userFriendRequests')
           .child(recipientId)
@@ -97,21 +103,22 @@ class FriendsService {
     }
   }
 
-  // Accept a friend request
+  /// Accepts a pending friend request
+  /// Updates friendship status and adds users to each other's friend lists
   Future<void> acceptFriendRequest(String requestId, String senderId, String senderName) async {
     try {
       final timestamp = ServerValue.timestamp;
 
       print('Accepting friend request: $requestId from $senderId');
 
-      // Update request status
+      // Update request status to accepted
       await _database
           .child('friendRequests')
           .child(requestId)
           .child('status')
           .set('accepted');
 
-      // Add to friends lists
+      // Add friendship records for both users
       await _database
           .child('userFriends')
           .child(currentUserId)
@@ -134,7 +141,7 @@ class FriendsService {
         'status': 'friends',
       });
 
-      // Remove from friend requests
+      // Remove request records
       await _database
           .child('userFriendRequests')
           .child(currentUserId)
@@ -157,19 +164,20 @@ class FriendsService {
     }
   }
 
-  // Decline a friend request
+  /// Declines a pending friend request
+  /// Updates request status and removes request records
   Future<void> declineFriendRequest(String requestId, String senderId) async {
     try {
       print('Declining friend request: $requestId from $senderId');
 
-      // Update request status
+      // Update request status to declined
       await _database
           .child('friendRequests')
           .child(requestId)
           .child('status')
           .set('declined');
 
-      // Remove from friend requests
+      // Remove request records for both users
       await _database
           .child('userFriendRequests')
           .child(currentUserId)
@@ -192,12 +200,13 @@ class FriendsService {
     }
   }
 
-  // Cancel outgoing friend request
+  /// Cancels an outgoing friend request
+  /// Updates request status and removes request records
   Future<void> cancelFriendRequest(String recipientId) async {
     try {
       print('Cancelling friend request to: $recipientId');
 
-      // Find the request ID
+      // Retrieve request details
       final outgoingSnapshot = await _database
           .child('userFriendRequests')
           .child(currentUserId)
@@ -211,14 +220,14 @@ class FriendsService {
 
         print('Found request to cancel: $requestId');
 
-        // Update request status
+        // Update request status to cancelled
         await _database
             .child('friendRequests')
             .child(requestId)
             .child('status')
             .set('cancelled');
 
-        // Remove from friend requests
+        // Remove request records for both users
         await _database
             .child('userFriendRequests')
             .child(currentUserId)
@@ -244,7 +253,8 @@ class FriendsService {
     }
   }
 
-  // Remove friend
+  /// Removes a friendship between two users
+  /// Deletes friendship records for both users
   Future<void> removeFriend(String friendId) async {
     try {
       print('Removing friend: $friendId');
@@ -270,7 +280,8 @@ class FriendsService {
     }
   }
 
-  // Get friendship status with another user
+  /// Gets the current friendship status with another user
+  /// Checks for existing friendship, outgoing request, or incoming request
   Future<FriendshipStatus> getFriendshipStatus(String userId) async {
     try {
       if (userId == currentUserId) return FriendshipStatus.none;
@@ -324,7 +335,8 @@ class FriendsService {
     }
   }
 
-  // Get user's friends list
+  /// Returns a stream of the user's friends list
+  /// Friends are sorted alphabetically by name
   Stream<List<Map<String, dynamic>>> getFriends() {
     return _database
         .child('userFriends')
@@ -349,7 +361,8 @@ class FriendsService {
     });
   }
 
-  // Get incoming friend requests
+  /// Returns a stream of incoming friend requests
+  /// Requests are sorted by timestamp (newest first)
   Stream<List<Map<String, dynamic>>> getIncomingFriendRequests() {
     return _database
         .child('userFriendRequests')
@@ -379,7 +392,8 @@ class FriendsService {
     });
   }
 
-  // Get outgoing friend requests
+  /// Returns a stream of outgoing friend requests
+  /// Requests are sorted by timestamp (newest first)
   Stream<List<Map<String, dynamic>>> getOutgoingFriendRequests() {
     return _database
         .child('userFriendRequests')
@@ -409,12 +423,13 @@ class FriendsService {
     });
   }
 
-  // Get total pending friend requests count
+  /// Returns a stream of the total number of pending friend requests
   Stream<int> getPendingRequestsCount() {
     return getIncomingFriendRequests().map((requests) => requests.length);
   }
 
-  // IMPROVED: Search for users from BOTH food markers AND pollution markers
+  /// Searches for users in both food and pollution markers
+  /// Filters out existing friends and pending requests
   Future<List<Map<String, dynamic>>> searchUsers(String query) async {
     try {
       if (query.trim().isEmpty) return [];

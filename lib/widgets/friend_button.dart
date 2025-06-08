@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import '../services/friends_service.dart';
 
+/// A dynamic button widget that handles friend request interactions
+/// Displays different states based on friendship status and handles all friend-related actions
 class FriendButton extends StatefulWidget {
+  /// The unique identifier of the target user
   final String userId;
+  
+  /// The display name of the target user
   final String userName;
+  
+  /// Whether the button is being displayed on the current user's marker
   final bool isMyMarker;
 
   const FriendButton({
@@ -30,6 +37,8 @@ class _FriendButtonState extends State<FriendButton> {
     }
   }
 
+  /// Loads the current friendship status with the target user
+  /// Only loads if the button is not on the current user's marker
   Future<void> _loadFriendshipStatus() async {
     if (widget.userId.isEmpty || widget.isMyMarker) return;
     
@@ -57,6 +66,8 @@ class _FriendButtonState extends State<FriendButton> {
     return _buildFriendButton();
   }
 
+  /// Builds the appropriate button based on friendship status
+  /// Includes loading state and different visual styles for each status
   Widget _buildFriendButton() {
     if (_isLoading) {
       return Container(
@@ -156,6 +167,8 @@ class _FriendButtonState extends State<FriendButton> {
     }
   }
 
+  /// Sends a friend request to the target user
+  /// Updates UI state and shows feedback via snackbar
   Future<void> _sendFriendRequest() async {
     setState(() {
       _isLoading = true;
@@ -197,6 +210,8 @@ class _FriendButtonState extends State<FriendButton> {
     }
   }
 
+  /// Cancels an outgoing friend request
+  /// Shows confirmation dialog and updates UI state
   Future<void> _cancelFriendRequest() async {
     final shouldCancel = await showDialog<bool>(
       context: context,

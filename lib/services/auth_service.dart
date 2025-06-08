@@ -1,20 +1,23 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 
+/// Service class that handles all authentication-related operations
+/// Manages user authentication state, sign-in, registration, and profile management
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final DatabaseReference _database = FirebaseDatabase.instance.ref();
 
-  // Get current user
+  /// Returns the currently authenticated user
   User? get currentUser => _auth.currentUser;
 
-  // Get current user ID
+  /// Returns the unique identifier of the current user
   String? get currentUserId => _auth.currentUser?.uid;
 
-  // Get current user email
+  /// Returns the email address of the current user
   String? get currentUserEmail => _auth.currentUser?.email;
 
-  // Get current user display name - FIXED VERSION
+  /// Returns the display name of the current user
+  /// Falls back to email username if display name is not set
   String get currentUserDisplayName {
     try {
       final user = _auth.currentUser;
@@ -32,16 +35,16 @@ class AuthService {
     }
   }
 
-  // Auth state changes stream
+  /// Stream of authentication state changes
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  // Sign in with email and password - IMPROVED VERSION
+  /// Authenticates a user with email and password
+  /// Clears any existing session before attempting to sign in
   Future<UserCredential?> signInWithEmailAndPassword(String email, String password) async {
     try {
-      // Sign out first to clear any cached data
+      // Clear existing session
       if (_auth.currentUser != null) {
         await _auth.signOut();
-        // Add a small delay to ensure cleanup
         await Future.delayed(Duration(milliseconds: 500));
       }
       
@@ -50,9 +53,7 @@ class AuthService {
         password: password,
       );
       
-      // Reload user to get fresh data
       await credential.user?.reload();
-      
       await _updateUserProfile(credential.user);
       return credential;
     } on FirebaseAuthException catch (e) {
@@ -62,14 +63,15 @@ class AuthService {
     }
   }
 
-  // Register with email and password - IMPROVED VERSION
+  /// Creates a new user account with email and password
+  /// Sets up initial user profile in the database
   Future<UserCredential?> registerWithEmailAndPassword(
     String email, 
     String password, 
     String displayName
   ) async {
     try {
-      // Sign out first to clear any cached data
+      // Clear existing session
       if (_auth.currentUser != null) {
         await _auth.signOut();
         await Future.delayed(Duration(milliseconds: 500));
@@ -80,11 +82,8 @@ class AuthService {
         password: password,
       );
       
-      // Update display name
       await credential.user?.updateDisplayName(displayName);
       await credential.user?.reload();
-      
-      // Save user profile to database
       await _saveUserProfile(credential.user!, displayName);
       
       return credential;
@@ -95,7 +94,8 @@ class AuthService {
     }
   }
 
-  // Sign in anonymously
+  /// Signs in a user anonymously
+  /// Creates a temporary user profile for unauthenticated users
   Future<UserCredential?> signInAnonymously() async {
     try {
       final credential = await _auth.signInAnonymously();
@@ -106,20 +106,18 @@ class AuthService {
     }
   }
 
-  // Sign out - IMPROVED VERSION
+  /// Signs out the current user and clears the session
   Future<void> signOut() async {
     try {
       await _auth.signOut();
-      // Add delay to ensure complete cleanup
       await Future.delayed(Duration(milliseconds: 300));
     } catch (e) {
       print('Error signing out: $e');
-      // Force sign out even if there's an error
       await _auth.signOut();
     }
   }
 
-  // Reset password
+  /// Sends a password reset email to the specified email address
   Future<void> resetPassword(String email) async {
     try {
       await _auth.sendPasswordResetEmail(email: email);
@@ -128,7 +126,8 @@ class AuthService {
     }
   }
 
-  // Save user profile to database - IMPROVED VERSION
+  /// Saves a new user profile to the database
+  /// Creates initial user data structure with timestamps
   Future<void> _saveUserProfile(User user, String displayName) async {
     try {
       await _database.child('users').child(user.uid).set({
@@ -140,26 +139,23 @@ class AuthService {
       });
     } catch (e) {
       print('Error saving user profile: $e');
-      // Don't throw error - this shouldn't prevent login
     }
   }
 
-  // Update user profile on login - IMPROVED VERSION
+  /// Updates an existing user's profile in the database
+  /// Creates a new profile if one doesn't exist
   Future<void> _updateUserProfile(User? user) async {
     if (user == null) return;
     
     try {
-      // Check if user exists in database first
       final userRef = _database.child('users').child(user.uid);
       final snapshot = await userRef.get();
       
       if (snapshot.exists) {
-        // Update existing user
         await userRef.update({
           'lastLoginAt': ServerValue.timestamp,
         });
       } else {
-        // Create new user profile if it doesn't exist
         await userRef.set({
           'uid': user.uid,
           'email': user.email ?? '',
@@ -170,11 +166,11 @@ class AuthService {
       }
     } catch (e) {
       print('Error updating user profile: $e');
-      // Don't throw error - this shouldn't prevent login
     }
   }
 
-  // Handle Firebase Auth exceptions
+  /// Handles Firebase authentication exceptions
+  /// Returns user-friendly error messages for common auth errors
   String _handleAuthException(FirebaseAuthException e) {
     switch (e.code) {
       case 'user-not-found':
@@ -204,7 +200,8 @@ class AuthService {
     }
   }
 
-  // Get user profile from database - IMPROVED VERSION
+  /// Retrieves a user's profile data from the database
+  /// Returns null if the profile doesn't exist or there's an error
   Future<Map<String, dynamic>?> getUserProfile(String userId) async {
     try {
       final snapshot = await _database.child('users').child(userId).get();
@@ -220,13 +217,13 @@ class AuthService {
     return null;
   }
 
-  // Check if user is logged in
+  /// Checks if a user is currently logged in
   bool get isLoggedIn => _auth.currentUser != null;
 
-  // Check if user is anonymous
+  /// Checks if the current user is anonymous
   bool get isAnonymous => _auth.currentUser?.isAnonymous ?? false;
 
-  // Force refresh current user - NEW METHOD
+  /// Forces a refresh of the current user's data
   Future<void> refreshCurrentUser() async {
     try {
       await _auth.currentUser?.reload();
@@ -235,7 +232,8 @@ class AuthService {
     }
   }
 
-  // Clear auth state - NEW METHOD
+  /// Completely clears the authentication state
+  /// Useful for logging out and cleaning up
   Future<void> clearAuthState() async {
     try {
       await signOut();

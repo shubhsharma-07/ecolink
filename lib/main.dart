@@ -5,6 +5,8 @@ import 'screens/login_screen.dart';
 import 'screens/food_locator.dart';
 import 'services/auth_service.dart';
 
+/// Entry point of the application
+/// Initializes Firebase and runs the main app
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
@@ -18,6 +20,8 @@ void main() async {
   runApp(MyApp());
 }
 
+/// Root widget of the application
+/// Sets up the theme and routing configuration
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -36,6 +40,9 @@ class MyApp extends StatelessWidget {
   }
 }
 
+/// Handles authentication state and routing
+/// Shows loading screen while checking auth state
+/// Routes to appropriate screen based on user authentication status
 class AuthWrapper extends StatelessWidget {
   final AuthService _authService = AuthService();
 
@@ -44,7 +51,7 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: _authService.authStateChanges,
       builder: (context, snapshot) {
-        // Show loading screen while checking auth state
+        // Display loading screen with gradient background and app logo
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Scaffold(
             body: Container(
@@ -103,7 +110,7 @@ class AuthWrapper extends StatelessWidget {
           );
         }
 
-        // Show appropriate screen based on auth state
+        // Route to FoodLocatorScreen if user is authenticated, otherwise show LoginScreen
         if (snapshot.hasData) {
           return FoodLocatorScreen();
         } else {

@@ -2,11 +2,22 @@ import 'package:flutter/material.dart';
 import '../services/messaging_service.dart';
 import '../screens/chat_screen.dart';
 
+/// A button widget that initiates messaging with another user
+/// Opens a dialog to compose and send a message about a food listing
 class MessageButton extends StatelessWidget {
+  /// The unique identifier of the message recipient
   final String recipientId;
+  
+  /// The display name of the message recipient
   final String recipientName;
+  
+  /// The unique identifier of the food marker being discussed
   final String foodMarkerId;
+  
+  /// The name of the food item being discussed
   final String foodName;
+  
+  /// Whether the button is being displayed on the current user's marker
   final bool isMyMarker;
 
   const MessageButton({
@@ -36,6 +47,7 @@ class MessageButton extends StatelessWidget {
     );
   }
 
+  /// Shows the message composition dialog
   void _showMessageDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -51,10 +63,19 @@ class MessageButton extends StatelessWidget {
   }
 }
 
+/// A dialog widget for composing and sending messages
+/// Includes food item context and message composition interface
 class MessageDialog extends StatefulWidget {
+  /// The unique identifier of the message recipient
   final String recipientId;
+  
+  /// The display name of the message recipient
   final String recipientName;
+  
+  /// The unique identifier of the food marker being discussed
   final String foodMarkerId;
+  
+  /// The name of the food item being discussed
   final String foodName;
 
   const MessageDialog({
@@ -180,6 +201,8 @@ class _MessageDialogState extends State<MessageDialog> {
     );
   }
 
+  /// Sends the composed message and navigates to the chat screen
+  /// Shows loading state and feedback via snackbar
   Future<void> _sendMessage() async {
     final message = _messageController.text.trim();
     if (message.isEmpty) {
@@ -247,6 +270,8 @@ class _MessageDialogState extends State<MessageDialog> {
     }
   }
 
+  /// Generates a consistent conversation ID for two users
+  /// Ensures same ID regardless of who initiates the conversation
   String _getConversationId(String userId1, String userId2) {
     final sortedIds = [userId1, userId2]..sort();
     return '${sortedIds[0]}_${sortedIds[1]}';

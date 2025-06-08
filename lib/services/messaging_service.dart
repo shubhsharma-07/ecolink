@@ -1,15 +1,20 @@
 import 'package:firebase_database/firebase_database.dart';
 import 'auth_service.dart';
 
+/// Service class that handles all messaging-related operations
+/// Manages conversations, messages, and real-time updates for the chat system
 class MessagingService {
   final DatabaseReference _database = FirebaseDatabase.instance.ref();
   final AuthService _authService = AuthService();
 
-  // Get current user info
+  /// Returns the current user's unique identifier
   String get currentUserId => _authService.currentUserId ?? 'unknown';
+  
+  /// Returns the current user's display name
   String get currentUserName => _authService.currentUserDisplayName;
 
-  // Send a message about a food listing
+  /// Sends a new message in a conversation about a food listing
+  /// Creates or updates conversation metadata and updates both users' conversation lists
   Future<void> sendMessage({
     required String recipientId,
     required String recipientName,
@@ -34,10 +39,10 @@ class MessagingService {
         'read': false,
       };
 
-      // Create conversation ID (consistent regardless of who sends first)
+      // Generate consistent conversation ID for both users
       final conversationId = _getConversationId(currentUserId, recipientId);
 
-      // Save message to conversation
+      // Store message in conversation
       await _database
           .child('conversations')
           .child(conversationId)
@@ -45,7 +50,7 @@ class MessagingService {
           .child(messageId)
           .set(messageData);
 
-      // Update conversation metadata
+      // Update conversation metadata with latest message info
       await _database
           .child('conversations')
           .child(conversationId)
@@ -62,7 +67,7 @@ class MessagingService {
         'foodName': foodName,
       });
 
-      // Update user's conversation list
+      // Update sender's conversation list
       await _database
           .child('userConversations')
           .child(currentUserId)
@@ -75,10 +80,10 @@ class MessagingService {
         'foodName': foodName,
         'lastMessage': message,
         'lastTimestamp': timestamp,
-        'unreadCount': 0, // No unread for sender
+        'unreadCount': 0,
       });
 
-      // Update recipient's conversation list
+      // Update recipient's conversation list with unread count
       await _database
           .child('userConversations')
           .child(recipientId)
@@ -98,13 +103,15 @@ class MessagingService {
     }
   }
 
-  // Get conversation ID (always same order)
+  /// Generates a consistent conversation ID for two users
+  /// Ensures same ID regardless of who initiates the conversation
   String _getConversationId(String userId1, String userId2) {
     final sortedIds = [userId1, userId2]..sort();
     return '${sortedIds[0]}_${sortedIds[1]}';
   }
 
-  // Get user's conversations
+  /// Returns a stream of the current user's conversations
+  /// Conversations are sorted by most recent message
   Stream<List<Map<String, dynamic>>> getUserConversations() {
     return _database
         .child('userConversations')
@@ -123,7 +130,7 @@ class MessagingService {
         conversations.add(conversation);
       });
 
-      // Sort by timestamp (newest first)
+      // Sort conversations by timestamp (newest first)
       conversations.sort((a, b) {
         final aTime = a['lastTimestamp'] ?? 0;
         final bTime = b['lastTimestamp'] ?? 0;
@@ -134,7 +141,8 @@ class MessagingService {
     });
   }
 
-  // Get messages for a conversation
+  /// Returns a stream of messages for a specific conversation
+  /// Messages are sorted chronologically (oldest first)
   Stream<List<Map<String, dynamic>>> getConversationMessages(String conversationId) {
     return _database
         .child('conversations')
@@ -153,7 +161,7 @@ class MessagingService {
         messages.add(message);
       });
 
-      // Sort by timestamp (oldest first for chat display)
+      // Sort messages by timestamp (oldest first for chat display)
       messages.sort((a, b) {
         final aTime = a['timestamp'] ?? 0;
         final bTime = b['timestamp'] ?? 0;
@@ -164,7 +172,8 @@ class MessagingService {
     });
   }
 
-  // Mark conversation as read
+  /// Marks all messages in a conversation as read for the current user
+  /// Resets unread count and updates message read status
   Future<void> markConversationAsRead(String conversationId) async {
     try {
       // Reset unread count for current user
@@ -175,7 +184,7 @@ class MessagingService {
           .child('unreadCount')
           .set(0);
 
-      // Mark messages as read
+      // Mark all unread messages as read
       final messagesRef = _database
           .child('conversations')
           .child(conversationId)
@@ -197,7 +206,8 @@ class MessagingService {
     }
   }
 
-  // Get total unread count for user
+  /// Returns a stream of the total unread message count for the current user
+  /// Aggregates unread counts from all conversations
   Stream<int> getUnreadCount() {
     return _database
         .child('userConversations')
@@ -219,11 +229,12 @@ class MessagingService {
     });
   }
 
-  // DEV ONLY: Delete conversation for both users and all messages, with debug prints
+  /// Development utility: Deletes a conversation and all its messages
+  /// Removes conversation data for both participants
   Future<void> deleteConversationForEveryone(String conversationId, String otherUserId) async {
     bool anyError = false;
 
-    // Try to delete from your userConversations node
+    // Delete from current user's conversation list
     try {
       await _database
           .child('userConversations')
@@ -236,7 +247,7 @@ class MessagingService {
       anyError = true;
     }
 
-    // Try to delete from other user's userConversations node
+    // Delete from other user's conversation list
     try {
       await _database
           .child('userConversations')

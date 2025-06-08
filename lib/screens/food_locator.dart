@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:math' as math;
 import '../services/auth_service.dart';
 import '../services/messaging_service.dart';
 import '../services/friends_service.dart';
@@ -15,6 +16,8 @@ import '../widgets/message_button.dart';
 import '../widgets/friend_button.dart';
 import '../screens/eco_challenges_screen.dart';
 import '../screens/pollution_tracker_screen.dart';
+import '../services/gemini_service.dart';
+import '../widgets/modern_bottom_nav.dart';
 
 class FoodLocatorScreen extends StatefulWidget {
   @override
@@ -35,6 +38,20 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
   final AuthService _authService = AuthService();
   final MessagingService _messagingService = MessagingService();
   final FriendsService _friendsService = FriendsService();
+  final GeminiService _geminiService = GeminiService();
+  bool _aiAnalysisComplete = false;
+  bool _useMiles = true;
+  String _searchQuery = '';
+  String _sortBy = 'distance';
+  double _radius = 10.0; // Default radius in miles
+  final TextEditingController _radiusController = TextEditingController();
+  bool _isAnalyzing = false;
+  int _currentIndex = 0;
+
+  // Constants for radius limits
+  static const double _maxRadiusMiles = 100.0;
+  static const double _maxRadiusKm = 160.0;
+  static const double _minRadius = 0.1;
 
   String get _currentUserId => _authService.currentUserId ?? 'unknown';
   String get _currentUserName => _authService.currentUserDisplayName;
@@ -44,10 +61,12 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
   void initState() {
     super.initState();
     _initializeApp();
+    _radiusController.text = _radius.toString();
   }
 
   @override
   void dispose() {
+    _radiusController.dispose();
     super.dispose();
   }
 
@@ -253,199 +272,365 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
     }
   }
 
-  Future<Map<String, dynamic>?> _showFoodInputDialog() async {
-    String foodName = '';
-    String description = '';
-    List<File> selectedImages = [];
-    return showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: Row(
-                children: [
-                  Icon(Icons.restaurant, color: Color(0xFF00A74C)),
-                  SizedBox(width: 8),
-                  Text('Add Food Location'),
-                ],
-              ),
-              content: Container(
-                width: double.maxFinite,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Tell us about the food at your location:'),
-                      SizedBox(height: 16),
-                      TextField(
-                        onChanged: (value) => foodName = value,
-                        decoration: InputDecoration(
-                          labelText: 'Food Name *',
-                          hintText: 'e.g., Pizza, Burger, Tacos',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.fastfood),
-                        ),
-                        textCapitalization: TextCapitalization.words,
+ Future<Map<String, dynamic>?> _showFoodInputDialog() async {
+  String foodName = '';
+  String description = '';
+  List<File> selectedImages = [];
+  
+  // Reset AI analysis state
+  _aiAnalysisComplete = false;
+  
+  // Create controllers for the text fields
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController descriptionController = TextEditingController();
+  
+  return showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (BuildContext context) {
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.restaurant, color: Color(0xFF00A74C)),
+                SizedBox(width: 8),
+                Text('Add Food Location'),
+              ],
+            ),
+            content: Container(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Tell us about the food at your location:'),
+                    SizedBox(height: 16),
+                    TextField(
+                      controller: nameController,
+                      onChanged: (value) => foodName = value,
+                      decoration: InputDecoration(
+                        labelText: 'Food Name *',
+                        hintText: 'e.g., Pizza, Burger, Tacos',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.fastfood),
                       ),
-                      SizedBox(height: 16),
-                      TextField(
-                        onChanged: (value) => description = value,
-                        decoration: InputDecoration(
-                          labelText: 'Description *',
-                          hintText: 'Describe the food, price, availability...',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.description),
-                        ),
-                        maxLines: 3,
-                        textCapitalization: TextCapitalization.sentences,
+                      textCapitalization: TextCapitalization.words,
+                    ),
+                    SizedBox(height: 16),
+                    TextField(
+                      controller: descriptionController,
+                      onChanged: (value) => description = value,
+                      decoration: InputDecoration(
+                        labelText: 'Description *',
+                        hintText: 'Describe the food, price, availability...',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.description),
                       ),
-                      SizedBox(height: 16),
-                      Text(
-                        'Photos * (At least 1 required)',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      SizedBox(height: 8),
-                      if (selectedImages.isNotEmpty) ...[
-                        Container(
-                          height: 100,
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: selectedImages.length,
-                            itemBuilder: (context, index) {
-                              return Container(
-                                margin: EdgeInsets.only(right: 8),
-                                child: Stack(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.file(
-                                        selectedImages[index],
-                                        width: 100,
-                                        height: 100,
-                                        fit: BoxFit.cover,
-                                      ),
+                      maxLines: 3,
+                      textCapitalization: TextCapitalization.sentences,
+                    ),
+                    SizedBox(height: 16),
+                    // AI Analysis Button - Conditional rendering based on analysis state
+                    if (!_aiAnalysisComplete) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: _isAnalyzing
+                            ? Container(
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[300],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00A74C)),
                                     ),
-                                    Positioned(
-                                      top: 4,
-                                      right: 4,
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          setState(() {
-                                            selectedImages.removeAt(index);
+                                  ),
+                                ),
+                              )
+                            : ElevatedButton.icon(
+                                onPressed: selectedImages.isEmpty
+                                    ? null
+                                    : () async {
+                                        if (selectedImages.isEmpty) return;
+                                        
+                                        setDialogState(() {
+                                          _isAnalyzing = true;
+                                        });
+                                        
+                                        try {
+                                          print('Starting AI analysis...');
+                                          final analysis = await _geminiService.analyzeFoodImage(selectedImages[0]);
+                                          print('Analysis complete: $analysis');
+                                          
+                                          if (analysis['name'] == 'Error') {
+                                            throw Exception(analysis['description']);
+                                          }
+
+                                          if (analysis['name'] == 'NO_FOOD_DETECTED') {
+                                            showDialog(
+                                              context: context,
+                                              builder: (context) => AlertDialog(
+                                                title: Row(
+                                                  children: [
+                                                    Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                                                    SizedBox(width: 8),
+                                                    Text('No Food Detected'),
+                                                  ],
+                                                ),
+                                                content: Text('The AI could not detect any food items in the image. Please try again with a clearer image of food items.'),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () => Navigator.of(context).pop(),
+                                                    child: Text('OK'),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                            // Reset the analysis state but don't mark as complete
+                                            setDialogState(() {
+                                              _isAnalyzing = false;
+                                            });
+                                            return;
+                                          }
+                                          
+                                          nameController.text = analysis['name'] ?? '';
+                                          descriptionController.text = '${analysis['description']}\n\nCharacteristics: ${analysis['characteristics']}';
+                                          
+                                          foodName = nameController.text;
+                                          description = descriptionController.text;
+                                          
+                                          // Mark analysis as complete
+                                          setDialogState(() {
+                                            _isAnalyzing = false;
+                                            _aiAnalysisComplete = true;
                                           });
-                                        },
-                                        child: Container(
-                                          padding: EdgeInsets.all(4),
-                                          decoration: BoxDecoration(
-                                            color: Colors.red,
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Icon(
-                                            Icons.close,
-                                            size: 16,
-                                            color: Colors.white,
-                                          ),
+                                          
+                                          // Show warning message about verifying content
+                                          showDialog(
+                                            context: context,
+                                            builder: (context) => AlertDialog(
+                                              title: Row(
+                                                children: [
+                                                  Icon(Icons.check_circle, color: Color(0xFF00A74C)),
+                                                  SizedBox(width: 8),
+                                                  Text('Analysis Complete'),
+                                                ],
+                                              ),
+                                              content: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    'The AI has generated a description and title for your food item. Please carefully review and edit the content to ensure it accurately represents your food item.',
+                                                    style: TextStyle(fontSize: 16),
+                                                  ),
+                                                  SizedBox(height: 16),
+                                                  Text(
+                                                    'Important:',
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.bold,
+                                                      color: Colors.red,
+                                                    ),
+                                                  ),
+                                                  SizedBox(height: 8),
+                                                  Text('• Verify the food name is correct'),
+                                                  Text('• Check that the description is accurate'),
+                                                  Text('• Make sure all details are precise'),
+                                                ],
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.of(context).pop(),
+                                                  child: Text('I Will Review'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('AI analysis complete!'),
+                                              backgroundColor: Color(0xFF00A74C),
+                                              duration: Duration(seconds: 2),
+                                            ),
+                                          );
+                                        } catch (e) {
+                                          print('Error during AI analysis: $e');
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Failed to analyze image: $e'),
+                                              backgroundColor: Colors.red,
+                                              duration: Duration(seconds: 3),
+                                            ),
+                                          );
+                                          // Reset analysis state on error
+                                          setDialogState(() {
+                                            _isAnalyzing = false;
+                                          });
+                                        }
+                                      },
+                                icon: Icon(Icons.auto_awesome),
+                                label: Text('Let AI Write Description & Title'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Color(0xFF00A74C),
+                                  foregroundColor: Colors.white,
+                                  disabledBackgroundColor: Colors.grey[300],
+                                  disabledForegroundColor: Colors.grey[600],
+                                ),
+                              ),
+                      ),
+                      SizedBox(height: 16),
+                    ],
+                    Text(
+                      'Photos * (At least 1 required)',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(height: 8),
+                    if (selectedImages.isNotEmpty) ...[
+                      Container(
+                        height: 100,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: selectedImages.length,
+                          itemBuilder: (context, index) {
+                            return Container(
+                              margin: EdgeInsets.only(right: 8),
+                              child: Stack(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.file(
+                                      selectedImages[index],
+                                      width: 100,
+                                      height: 100,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 4,
+                                    right: 4,
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        setDialogState(() {
+                                          selectedImages.removeAt(index);
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: EdgeInsets.all(4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Icon(
+                                          Icons.close,
+                                          size: 16,
+                                          color: Colors.white,
                                         ),
                                       ),
                                     ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
                         ),
-                        SizedBox(height: 8),
-                      ],
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () async {
-                                final image = await _imagePicker.pickImage(
-                                  source: ImageSource.camera,
-                                  maxWidth: 1024,
-                                  maxHeight: 1024,
-                                  imageQuality: 80,
-                                );
-                                if (image != null) {
-                                  setState(() {
-                                    selectedImages.add(File(image.path));
-                                  });
-                                }
-                              },
-                              icon: Icon(Icons.camera_alt),
-                              label: Text('Camera'),
-                            ),
-                          ),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () async {
-                                final image = await _imagePicker.pickImage(
-                                  source: ImageSource.gallery,
-                                  maxWidth: 1024,
-                                  maxHeight: 1024,
-                                  imageQuality: 80,
-                                );
-                                if (image != null) {
-                                  setState(() {
-                                    selectedImages.add(File(image.path));
-                                  });
-                                }
-                              },
-                              icon: Icon(Icons.photo_library),
-                              label: Text('Gallery'),
-                            ),
-                          ),
-                        ],
                       ),
-                      if (selectedImages.isEmpty)
-                        Padding(
-                          padding: EdgeInsets.only(top: 8),
-                          child: Text(
-                            'Please add at least one photo (camera or gallery)',
-                            style: TextStyle(
-                              color: Colors.red[600],
-                              fontSize: 12,
-                            ),
+                      SizedBox(height: 8),
+                    ],
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final image = await _imagePicker.pickImage(
+                                source: ImageSource.camera,
+                                maxWidth: 1024,
+                                maxHeight: 1024,
+                                imageQuality: 80,
+                              );
+                              if (image != null) {
+                                setDialogState(() {
+                                  selectedImages.add(File(image.path));
+                                });
+                              }
+                            },
+                            icon: Icon(Icons.camera_alt),
+                            label: Text('Camera'),
                           ),
                         ),
-                    ],
-                  ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final image = await _imagePicker.pickImage(
+                                source: ImageSource.gallery,
+                                maxWidth: 1024,
+                                maxHeight: 1024,
+                                imageQuality: 80,
+                              );
+                              if (image != null) {
+                                setDialogState(() {
+                                  selectedImages.add(File(image.path));
+                                });
+                              }
+                            },
+                            icon: Icon(Icons.photo_library),
+                            label: Text('Gallery'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (selectedImages.isEmpty)
+                      Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Please add at least one photo (camera or gallery)',
+                          style: TextStyle(
+                            color: Colors.red[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: Text('Cancel'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: nameController.text.trim().isNotEmpty &&
+                         descriptionController.text.trim().isNotEmpty &&
+                         selectedImages.isNotEmpty
+                    ? () {
+                        Navigator.of(context).pop({
+                          'name': nameController.text.trim(),
+                          'description': descriptionController.text.trim(),
+                          'images': selectedImages,
+                        });
+                      }
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF00A74C),
+                  foregroundColor: Colors.white,
                 ),
-                ElevatedButton(
-                  onPressed: foodName.trim().isNotEmpty &&
-                           description.trim().isNotEmpty &&
-                           selectedImages.isNotEmpty
-                      ? () {
-                          Navigator.of(context).pop({
-                            'name': foodName.trim(),
-                            'description': description.trim(),
-                            'images': selectedImages,
-                          });
-                        }
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFF00A74C),
-                    foregroundColor: Colors.white,
-                  ),
-                  child: Text('Add Marker'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
+                child: Text('Add Marker'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
 
   Future<void> _onMarkerTapped(String markerId, Map<String, dynamic> markerData) async {
     await _showMarkerDetailsDialog(markerId, markerData);
@@ -1090,6 +1275,528 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
     );
   }
 
+  void _updateRadiusForUnitChange(bool newUseMiles) {
+    if (newUseMiles != _useMiles) {
+      if (newUseMiles) {
+        // Converting from km to miles
+        _radius = (_radius * 0.621371).clamp(_minRadius, _maxRadiusMiles);
+      } else {
+        // Converting from miles to km
+        _radius = (_radius / 0.621371).clamp(_minRadius, _maxRadiusKm);
+      }
+      _radiusController.text = _radius.toStringAsFixed(1);
+    }
+  }
+
+  void _showListView() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            // Filter and sort markers
+            final filteredMarkers = _markers.where((marker) {
+              final markerData = _getMarkerData(marker.markerId.value);
+              if (markerData == null) return false;
+              
+              // Calculate distance
+              final distanceKm = _calculateDistance(
+                _currentLocation?.latitude ?? 0,
+                _currentLocation?.longitude ?? 0,
+                markerData['latitude'] ?? 0,
+                markerData['longitude'] ?? 0,
+              );
+              final distance = _useMiles ? distanceKm * 0.621371 : distanceKm;
+              
+              // Check if within radius
+              if (distance > _radius) return false;
+              
+              // Apply search filter
+              if (_searchQuery.isEmpty) return true;
+              
+              final name = (markerData['name'] ?? '').toLowerCase();
+              final description = (markerData['description'] ?? '').toLowerCase();
+              final addedBy = (markerData['addedByName'] ?? '').toLowerCase();
+              final query = _searchQuery.toLowerCase();
+              
+              return name.contains(query) || 
+                     description.contains(query) || 
+                     addedBy.contains(query);
+            }).toList();
+
+            // Sort markers
+            filteredMarkers.sort((a, b) {
+              final aData = _getMarkerData(a.markerId.value);
+              final bData = _getMarkerData(b.markerId.value);
+              if (aData == null || bData == null) return 0;
+
+              switch (_sortBy) {
+                case 'distance':
+                  final aDistance = _calculateDistance(
+                    _currentLocation?.latitude ?? 0,
+                    _currentLocation?.longitude ?? 0,
+                    aData['latitude'] ?? 0,
+                    aData['longitude'] ?? 0,
+                  );
+                  final bDistance = _calculateDistance(
+                    _currentLocation?.latitude ?? 0,
+                    _currentLocation?.longitude ?? 0,
+                    bData['latitude'] ?? 0,
+                    bData['longitude'] ?? 0,
+                  );
+                  return aDistance.compareTo(bDistance);
+                
+                case 'recent':
+                  final aTimestamp = aData['timestamp'] ?? 0;
+                  final bTimestamp = bData['timestamp'] ?? 0;
+                  return bTimestamp.compareTo(aTimestamp);
+                
+                case 'name':
+                  final aName = (aData['name'] ?? '').toLowerCase();
+                  final bName = (bData['name'] ?? '').toLowerCase();
+                  return aName.compareTo(bName);
+                
+                default:
+                  return 0;
+              }
+            });
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.8,
+              child: Column(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 4,
+                          offset: Offset(0, -2),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Food Listings',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF00A74C),
+                              ),
+                            ),
+                            Row(
+                              children: [
+                                Text(
+                                  'km',
+                                  style: TextStyle(
+                                    color: !_useMiles ? Color(0xFF00A74C) : Colors.grey,
+                                    fontWeight: !_useMiles ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                ),
+                                Switch(
+                                  value: _useMiles,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _updateRadiusForUnitChange(value);
+                                      _useMiles = value;
+                                    });
+                                  },
+                                  activeColor: Color(0xFF00A74C),
+                                ),
+                                Text(
+                                  'mi',
+                                  style: TextStyle(
+                                    color: _useMiles ? Color(0xFF00A74C) : Colors.grey,
+                                    fontWeight: _useMiles ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.close),
+                                  onPressed: () => Navigator.pop(context),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Radius: ${_radius.toStringAsFixed(1)} ${_useMiles ? 'mi' : 'km'}',
+                                        style: TextStyle(
+                                          color: Color(0xFF00A74C),
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Container(
+                                        width: 80,
+                                        child: TextField(
+                                          controller: _radiusController,
+                                          keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                          decoration: InputDecoration(
+                                            isDense: true,
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                            border: OutlineInputBorder(),
+                                            suffixText: _useMiles ? 'mi' : 'km',
+                                          ),
+                                          onChanged: (value) {
+                                            final newRadius = double.tryParse(value);
+                                            if (newRadius != null && newRadius > 0) {
+                                              setState(() {
+                                                _radius = newRadius.clamp(
+                                                  _minRadius,
+                                                  _useMiles ? _maxRadiusMiles : _maxRadiusKm
+                                                );
+                                                _radiusController.text = _radius.toStringAsFixed(1);
+                                              });
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: 8),
+                                  Slider(
+                                    value: _radius,
+                                    min: _minRadius,
+                                    max: _useMiles ? _maxRadiusMiles : _maxRadiusKm,
+                                    divisions: 100,
+                                    activeColor: Color(0xFF00A74C),
+                                    inactiveColor: Color(0xFF00A74C).withOpacity(0.2),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _radius = value;
+                                        _radiusController.text = value.toStringAsFixed(1);
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                value: _sortBy,
+                                decoration: InputDecoration(
+                                  labelText: 'Sort by',
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                ),
+                                items: [
+                                  DropdownMenuItem(
+                                    value: 'distance',
+                                    child: Text('Distance'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'recent',
+                                    child: Text('Most Recent'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'name',
+                                    child: Text('Name'),
+                                  ),
+                                ],
+                                onChanged: (value) {
+                                  if (value != null) {
+                                    setState(() {
+                                      _sortBy = value;
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                decoration: InputDecoration(
+                                  labelText: 'Search',
+                                  prefixIcon: Icon(Icons.search),
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                ),
+                                onChanged: (value) {
+                                  setState(() {
+                                    _searchQuery = value;
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: filteredMarkers.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.search_off,
+                                size: 48,
+                                color: Colors.grey[400],
+                              ),
+                              SizedBox(height: 16),
+                              Text(
+                                'No listings found',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              if (_searchQuery.isNotEmpty || _radius < (_useMiles ? 50.0 : 80.0))
+                                Text(
+                                  'Try adjusting your search or radius',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: EdgeInsets.all(16),
+                          itemCount: filteredMarkers.length,
+                          itemBuilder: (context, index) {
+                            final marker = filteredMarkers[index];
+                            final markerData = _getMarkerData(marker.markerId.value);
+                            if (markerData == null) return SizedBox.shrink();
+
+                            final distanceKm = _calculateDistance(
+                              _currentLocation?.latitude ?? 0,
+                              _currentLocation?.longitude ?? 0,
+                              markerData['latitude'] ?? 0,
+                              markerData['longitude'] ?? 0,
+                            );
+                            final distance = _useMiles ? distanceKm * 0.621371 : distanceKm;
+                            final unit = _useMiles ? 'mi' : 'km';
+                            final isMyMarker = markerData['addedBy'] == _currentUserId;
+
+                            return Card(
+                              margin: EdgeInsets.only(bottom: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: InkWell(
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _onMarkerTapped(marker.markerId.value, markerData);
+                                },
+                                borderRadius: BorderRadius.circular(12),
+                                child: Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.restaurant,
+                                            color: Color(0xFF00A74C),
+                                            size: 20,
+                                          ),
+                                          SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              markerData['name'] ?? 'Unknown Food',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Color(0xFF00A74C).withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            child: Text(
+                                              '${distance.toStringAsFixed(1)} $unit',
+                                              style: TextStyle(
+                                                color: Color(0xFF00A74C),
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      if (markerData['description'] != null && markerData['description'].isNotEmpty) ...[
+                                        SizedBox(height: 8),
+                                        Text(
+                                          markerData['description'],
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                      SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.person,
+                                            size: 16,
+                                            color: Colors.grey[600],
+                                          ),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            markerData['addedByName'] ?? 'Unknown User',
+                                            style: TextStyle(
+                                              color: Colors.grey[600],
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          Spacer(),
+                                          if (isMyMarker)
+                                            IconButton(
+                                              icon: Icon(
+                                                Icons.delete_outline,
+                                                color: Colors.red,
+                                                size: 20,
+                                              ),
+                                              onPressed: () async {
+                                                final shouldDelete = await _showDeleteConfirmationDialog(
+                                                  markerData['name'] ?? 'Unknown Food',
+                                                  markerData['addedByName'] ?? 'Unknown User',
+                                                  true
+                                                );
+                                                if (shouldDelete == true) {
+                                                  await _deleteMarker(marker.markerId.value, markerData['name'] ?? 'Unknown Food');
+                                                  Navigator.pop(context);
+                                                }
+                                              },
+                                              tooltip: 'Delete',
+                                            ),
+                                          if (markerData['images'] != null &&
+                                              (markerData['images'] as List).isNotEmpty)
+                                            Text(
+                                              '${(markerData['images'] as List).length} photos',
+                                              style: TextStyle(
+                                                color: Colors.grey[600],
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Map<String, dynamic>? _getMarkerData(String markerId) {
+    if (!_firebaseConnected || _foodMarkersRef == null) return null;
+    try {
+      final marker = _markers.firstWhere(
+        (marker) => marker.markerId.value == markerId,
+      );
+      final markerData = {
+        'name': marker.infoWindow.title,
+        'description': marker.infoWindow.snippet?.split('•')[1].trim(),
+        'latitude': marker.position.latitude,
+        'longitude': marker.position.longitude,
+        'addedByName': marker.infoWindow.snippet?.split('•')[0].replaceAll('Added by ', '').trim(),
+        'images': [], // This will be populated from Firebase
+        'addedBy': '', // This will be populated from Firebase
+      };
+
+      // Get the full marker data from Firebase
+      _foodMarkersRef!.child(markerId).get().then((snapshot) {
+        if (snapshot.exists) {
+          final data = snapshot.value as Map<dynamic, dynamic>;
+          markerData['images'] = data['images'] ?? [];
+          markerData['addedBy'] = data['addedBy'] ?? '';
+          markerData['description'] = data['description'] ?? '';
+        }
+      });
+
+      return markerData;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const double earthRadius = 6371; // km
+    final dLat = _toRadians(lat2 - lat1);
+    final dLon = _toRadians(lon2 - lon1);
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_toRadians(lat1)) * math.cos(_toRadians(lat2)) *
+        math.sin(dLon / 2) * math.sin(dLon / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  double _toRadians(double degree) {
+    return degree * math.pi / 180;
+  }
+
+  void _onNavTap(int index) {
+    if (index == _currentIndex) return;
+    
+    switch (index) {
+      case 0:
+        // Already on Food Map
+        break;
+      case 1:
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => EcoChallengesScreen(),
+          ),
+        );
+        break;
+      case 2:
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => PollutionTrackerScreen(),
+          ),
+        );
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1110,6 +1817,11 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: Icon(Icons.list, color: Color(0xFF00A74C)),
+            onPressed: _showListView,
+            tooltip: 'List View',
+          ),
           StreamBuilder<int>(
             stream: _friendsService.getPendingRequestsCount(),
             builder: (context, snapshot) {
@@ -1305,152 +2017,9 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                 ),
               ],
             ),
-      bottomNavigationBar: _buildBottomInfo(),
-    );
-  }
-
-  Widget? _buildBottomInfo() {
-    if (_currentLocation == null) return null;
-    return Container(
-      height: 80,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 8,
-            offset: Offset(0, -2),
-          ),
-        ],
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                _showSnackBar('You are already on the Food Locator screen', Color(0xFF00A74C));
-              },
-              child: Container(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: Color(0xFF00A74C).withOpacity(0.07),
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                  ),
-                  border: Border.all(
-                    color: Color(0xFF00A74C).withOpacity(0.3),
-                    width: 2,
-                  ),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.map,
-                      color: Color(0xFF00A74C),
-                      size: 24,
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Food Map',
-                      style: TextStyle(
-                        color: Color(0xFF00A74C),
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 40,
-            color: Colors.grey[300],
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => EcoChallengesScreen(),
-                  ),
-                );
-              },
-              child: Container(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.eco,
-                      color: Colors.green[600],
-                      size: 24,
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Eco Challenges',
-                      style: TextStyle(
-                        color: Colors.green[600],
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 40,
-            color: Colors.grey[300],
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => PollutionTrackerScreen(),
-                  ),
-                );
-              },
-              child: Container(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.only(
-                    topRight: Radius.circular(20),
-                  ),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.report_problem,
-                      color: Colors.red[700],
-                      size: 24,
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Pollution',
-                      style: TextStyle(
-                        color: Colors.red[700],
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
+      bottomNavigationBar: ModernBottomNav(
+        currentIndex: _currentIndex,
+        onTap: _onNavTap,
       ),
     );
   }
