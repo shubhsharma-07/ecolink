@@ -2,37 +2,130 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:firebase_remote_config/firebase_remote_config.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 /// Service class that handles AI-powered image analysis using Google's Gemini API
 /// Provides functionality for analyzing food and pollution images
 class GeminiService {
-  static const String _apiKey = 'AIzaSyDmwjPVHKc9xMJfUulhr_0pvEjcLyFs-_E';
+  static String? _apiKey;
   late final GenerativeModel _model;
   late final GenerativeModel _visionModel;
+  final FirebaseRemoteConfig _remoteConfig = FirebaseRemoteConfig.instance;
+  static const int _maxRetries = 3;
+  static const Duration _retryDelay = Duration(seconds: 2);
 
   /// Initializes the Gemini service with appropriate models
   /// Sets up both text and vision models for different use cases
   GeminiService() {
-    _model = GenerativeModel(
-      model: 'gemini-1.5-pro',
-      apiKey: _apiKey,
-    );
-    _visionModel = GenerativeModel(
-      model: 'gemini-1.5-flash',
-      apiKey: _apiKey,
-    );
+    _initializeApiKey();
+  }
+
+  /// Ensures Firebase is initialized
+  Future<void> _ensureFirebaseInitialized() async {
+    try {
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp();
+      }
+    } catch (e) {
+      print('Error initializing Firebase: $e');
+      rethrow;
+    }
+  }
+
+  /// Loads the API key from Firebase Remote Config with retry mechanism
+  Future<void> _initializeApiKey() async {
+    await _ensureFirebaseInitialized();
+    int retryCount = 0;
+    
+    while (retryCount < _maxRetries) {
+      try {
+        // Set default values for Remote Config
+        await _remoteConfig.setDefaults({
+          'gemini_api_key': 'YOUR_DEFAULT_API_KEY_HERE' // Replace with your actual API key
+        });
+
+        // Initialize Remote Config with appropriate settings
+        await _remoteConfig.setConfigSettings(RemoteConfigSettings(
+          fetchTimeout: const Duration(minutes: 1),
+          minimumFetchInterval: Duration.zero, // Allow immediate fetch for testing
+        ));
+
+        // Fetch and activate the latest config
+        final bool activated = await _remoteConfig.fetchAndActivate();
+        if (!activated) {
+          print('Remote Config fetch not activated, using cached values');
+        }
+        
+        // Get the API key from Remote Config
+        _apiKey = _remoteConfig.getString('gemini_api_key');
+        
+        if (_apiKey == null || _apiKey!.isEmpty) {
+          throw Exception('API key not found in Firebase Remote Config');
+        }
+
+        // Validate API key format (basic validation)
+        if (!_isValidApiKeyFormat(_apiKey!)) {
+          throw Exception('Invalid API key format');
+        }
+
+        _model = GenerativeModel(
+          model: 'gemini-1.5-pro',
+          apiKey: _apiKey!,
+        );
+        _visionModel = GenerativeModel(
+          model: 'gemini-1.5-flash',
+          apiKey: _apiKey!,
+        );
+
+        print('Successfully initialized Gemini API with Remote Config');
+        return;
+      } catch (e) {
+        retryCount++;
+        print('Error loading API key from Remote Config (Attempt $retryCount): $e');
+        
+        if (retryCount == _maxRetries) {
+          // If all retries fail, use the hardcoded API key as fallback
+          print('Using fallback API key after failed Remote Config attempts');
+          _apiKey = 'AIzaSyDmwjPVHKc9xMJfUulhr_0pvEjcLyFs-_E';
+          
+          _model = GenerativeModel(
+            model: 'gemini-1.5-pro',
+            apiKey: _apiKey!,
+          );
+          _visionModel = GenerativeModel(
+            model: 'gemini-1.5-flash',
+            apiKey: _apiKey!,
+          );
+          return;
+        }
+        
+        // Wait before retrying
+        await Future.delayed(_retryDelay * retryCount);
+      }
+    }
+  }
+
+  /// Validates the API key format
+  bool _isValidApiKeyFormat(String apiKey) {
+    // Basic validation - adjust according to your API key format
+    return apiKey.startsWith('AIza') && apiKey.length > 30;
   }
 
   /// Analyzes an image to identify and describe food items
   /// Returns structured information about detected food
   Future<Map<String, dynamic>> analyzeFoodImage(File imageFile) async {
     try {
+      if (_apiKey == null) {
+        await _initializeApiKey();
+      }
+      
       print('Starting image analysis...');
       final bytes = await imageFile.readAsBytes();
       
       final model = GenerativeModel(
         model: 'gemini-1.5-flash',
-        apiKey: _apiKey,
+        apiKey: _apiKey!,
       );
 
       final prompt = '''
@@ -112,7 +205,7 @@ If multiple food items are present, focus on the most prominent one.
       
       final model = GenerativeModel(
         model: 'gemini-1.5-flash',
-        apiKey: _apiKey,
+        apiKey: _apiKey!,
       );
 
       final prompt = '''

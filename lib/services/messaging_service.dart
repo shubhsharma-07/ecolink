@@ -1,4 +1,6 @@
 import 'package:firebase_database/firebase_database.dart';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'auth_service.dart';
 
 /// Service class that handles all messaging-related operations
@@ -21,6 +23,7 @@ class MessagingService {
     required String foodMarkerId,
     required String foodName,
     required String message,
+    List<String>? images,
   }) async {
     try {
       final messageId = 'msg_${DateTime.now().millisecondsSinceEpoch}';
@@ -37,6 +40,8 @@ class MessagingService {
         'message': message,
         'timestamp': timestamp,
         'read': false,
+        'hasImages': images != null && images.isNotEmpty,
+        'images': images ?? [],
       };
 
       // Generate consistent conversation ID for both users
@@ -60,7 +65,7 @@ class MessagingService {
           currentUserId: currentUserName,
           recipientId: recipientName,
         },
-        'lastMessage': message,
+        'lastMessage': images != null && images.isNotEmpty ? '📷 Image' : message,
         'lastTimestamp': timestamp,
         'lastSenderId': currentUserId,
         'foodMarkerId': foodMarkerId,
@@ -78,7 +83,7 @@ class MessagingService {
         'otherUserName': recipientName,
         'foodMarkerId': foodMarkerId,
         'foodName': foodName,
-        'lastMessage': message,
+        'lastMessage': images != null && images.isNotEmpty ? '📷 Image' : message,
         'lastTimestamp': timestamp,
         'unreadCount': 0,
       });
@@ -94,7 +99,7 @@ class MessagingService {
         'otherUserName': currentUserName,
         'foodMarkerId': foodMarkerId,
         'foodName': foodName,
-        'lastMessage': message,
+        'lastMessage': images != null && images.isNotEmpty ? '📷 Image' : message,
         'lastTimestamp': timestamp,
         'unreadCount': ServerValue.increment(1),
       });

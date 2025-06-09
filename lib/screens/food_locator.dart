@@ -18,6 +18,8 @@ import '../screens/eco_challenges_screen.dart';
 import '../screens/pollution_tracker_screen.dart';
 import '../services/gemini_service.dart';
 import '../widgets/modern_bottom_nav.dart';
+import '../widgets/review_widget.dart';
+import '../services/review_service.dart';
 
 class FoodLocatorScreen extends StatefulWidget {
   @override
@@ -39,6 +41,7 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
   final MessagingService _messagingService = MessagingService();
   final FriendsService _friendsService = FriendsService();
   final GeminiService _geminiService = GeminiService();
+  final ReviewService _reviewService = ReviewService();
   bool _aiAnalysisComplete = false;
   bool _useMiles = true;
   String _searchQuery = '';
@@ -158,17 +161,29 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
   void _buildMarkersFromData(Map<dynamic, dynamic> data) {
     setState(() {
       _markers.removeWhere((marker) => _isFoodMarker(marker));
+      _approximateCircles.clear();
+      
       data.forEach((key, value) {
         final markerData = Map<String, dynamic>.from(value);
         final isMyMarker = markerData['addedBy'] == _currentUserId;
         final addedByName = markerData['addedByName'] ?? 'Unknown User';
+        
+        // Get the original location
+        final originalLatLng = LatLng(
+          markerData['latitude'].toDouble(),
+          markerData['longitude'].toDouble(),
+        );
+        
+        // For other users' markers, use approximate location
+        final displayLatLng = isMyMarker 
+          ? originalLatLng 
+          : _generateApproximateLocation(originalLatLng, 0.5); // 500m radius
+        
+        // Add marker
         _markers.add(
           Marker(
             markerId: MarkerId(key),
-            position: LatLng(
-              markerData['latitude'].toDouble(),
-              markerData['longitude'].toDouble(),
-            ),
+            position: displayLatLng,
             infoWindow: InfoWindow(
               title: markerData['name'],
               snippet: isMyMarker 
@@ -181,6 +196,20 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
             onTap: () => _onMarkerTapped(key, markerData),
           ),
         );
+        
+        // Add circle for approximate locations
+        if (!isMyMarker) {
+          _approximateCircles.add(
+            Circle(
+              circleId: CircleId('approximate_$key'),
+              center: displayLatLng,
+              radius: 500, // 500 meters
+              fillColor: Colors.red.withOpacity(0.1),
+              strokeColor: Colors.red.withOpacity(0.3),
+              strokeWidth: 1,
+            ),
+          );
+        }
       });
     });
   }
@@ -659,35 +688,67 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                       topRight: Radius.circular(4),
                     ),
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.restaurant, color: Color(0xFF00A74C), size: 24),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              markerData['name'] ?? 'Unknown Food',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
+                      Row(
+                        children: [
+                          Icon(Icons.restaurant, color: Color(0xFF00A74C), size: 24),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  markerData['name'] ?? 'Unknown Food',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  'Added by ${isMyMarker ? "you" : addedByName}',
+                                  style: TextStyle(
+                                    color: Colors.grey[600],
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
-                            Text(
-                              'Added by ${isMyMarker ? "you" : addedByName}',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      if (!isMyMarker) ...[
+                        SizedBox(height: 12),
+                        Container(
+                          padding: EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.orange[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange[200]!),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.location_on, color: Colors.orange[700], size: 20),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'This location is approximate for privacy',
+                                  style: TextStyle(
+                                    color: Colors.orange[900],
+                                    fontSize: 12,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: Icon(Icons.close),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -751,6 +812,23 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                                 ),
                               ],
                             ),
+                          ),
+                        ],
+                        if (!isMyMarker) ...[
+                          SizedBox(height: 24),
+                          Divider(),
+                          SizedBox(height: 16),
+                          Text(
+                            'User Reviews',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          SizedBox(height: 16),
+                          ReviewWidget(
+                            targetUserId: addedById,
+                            targetUserName: addedByName,
                           ),
                         ],
                       ],
@@ -1360,10 +1438,46 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                   final bName = (bData['name'] ?? '').toLowerCase();
                   return aName.compareTo(bName);
                 
+                case 'rating':
+                  // For rating sorting, we'll use a placeholder value
+                  // The actual sorting will be handled by the FutureBuilder
+                  return 0;
+                
                 default:
                   return 0;
               }
             });
+
+            // If sorting by rating, we need to fetch the ratings first
+            if (_sortBy == 'rating') {
+              // Create a list of futures for rating lookups
+              final ratingFutures = filteredMarkers.map((marker) async {
+                final markerData = _getMarkerData(marker.markerId.value);
+                if (markerData == null) return 0.0;
+                return await _reviewService.getUserTrustScore(markerData['addedBy'] ?? '');
+              }).toList();
+
+              // Wait for all rating lookups to complete
+              Future.wait(ratingFutures).then((ratings) {
+                // Sort the markers based on the fetched ratings
+                for (int i = 0; i < filteredMarkers.length; i++) {
+                  for (int j = i + 1; j < filteredMarkers.length; j++) {
+                    if (ratings[j] > ratings[i]) {
+                      // Swap markers
+                      final temp = filteredMarkers[i];
+                      filteredMarkers[i] = filteredMarkers[j];
+                      filteredMarkers[j] = temp;
+                      // Swap ratings
+                      final tempRating = ratings[i];
+                      ratings[i] = ratings[j];
+                      ratings[j] = tempRating;
+                    }
+                  }
+                }
+                // Trigger a rebuild with the sorted list
+                setState(() {});
+              });
+            }
 
             return Container(
               height: MediaQuery.of(context).size.height * 0.8,
@@ -1517,6 +1631,10 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                                     value: 'name',
                                     child: Text('Name'),
                                   ),
+                                  DropdownMenuItem(
+                                    value: 'rating',
+                                    child: Text('Rating'),
+                                  ),
                                 ],
                                 onChanged: (value) {
                                   if (value != null) {
@@ -1583,136 +1701,196 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                           itemCount: filteredMarkers.length,
                           itemBuilder: (context, index) {
                             final marker = filteredMarkers[index];
-                            final markerData = _getMarkerData(marker.markerId.value);
-                            if (markerData == null) return SizedBox.shrink();
+                            final baseData = _getMarkerData(marker.markerId.value);
+                            if (baseData == null) return SizedBox.shrink();
 
-                            final distanceKm = _calculateDistance(
-                              _currentLocation?.latitude ?? 0,
-                              _currentLocation?.longitude ?? 0,
-                              markerData['latitude'] ?? 0,
-                              markerData['longitude'] ?? 0,
-                            );
-                            final distance = _useMiles ? distanceKm * 0.621371 : distanceKm;
-                            final unit = _useMiles ? 'mi' : 'km';
-                            final isMyMarker = markerData['addedBy'] == _currentUserId;
-
-                            return Card(
-                              margin: EdgeInsets.only(bottom: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: InkWell(
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  _onMarkerTapped(marker.markerId.value, markerData);
-                                },
-                                borderRadius: BorderRadius.circular(12),
-                                child: Padding(
-                                  padding: EdgeInsets.all(12),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
+                            return FutureBuilder<Map<String, dynamic>?>(
+                              future: _getFullMarkerData(marker.markerId.value),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return Card(
+                                    margin: EdgeInsets.only(bottom: 12),
+                                    child: Padding(
+                                      padding: EdgeInsets.all(12),
+                                      child: Row(
                                         children: [
-                                          Icon(
-                                            Icons.restaurant,
-                                            color: Color(0xFF00A74C),
-                                            size: 20,
+                                          CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00A74C)),
                                           ),
-                                          SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              markerData['name'] ?? 'Unknown Food',
-                                              style: TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                          Container(
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Color(0xFF00A74C).withOpacity(0.1),
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            child: Text(
-                                              '${distance.toStringAsFixed(1)} $unit',
-                                              style: TextStyle(
-                                                color: Color(0xFF00A74C),
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ),
+                                          SizedBox(width: 16),
+                                          Text('Loading marker data...'),
                                         ],
                                       ),
-                                      if (markerData['description'] != null && markerData['description'].isNotEmpty) ...[
-                                        SizedBox(height: 8),
-                                        Text(
-                                          markerData['description'],
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: Colors.grey[600],
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                      ],
-                                      SizedBox(height: 8),
-                                      Row(
+                                    ),
+                                  );
+                                }
+
+                                final markerData = snapshot.data ?? baseData;
+                                final distanceKm = _calculateDistance(
+                                  _currentLocation?.latitude ?? 0,
+                                  _currentLocation?.longitude ?? 0,
+                                  markerData['latitude'] ?? 0,
+                                  markerData['longitude'] ?? 0,
+                                );
+                                final distance = _useMiles ? distanceKm * 0.621371 : distanceKm;
+                                final unit = _useMiles ? 'mi' : 'km';
+                                final isMyMarker = markerData['addedBy'] == _currentUserId;
+
+                                return Card(
+                                  margin: EdgeInsets.only(bottom: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: InkWell(
+                                    onTap: () {
+                                      Navigator.pop(context);
+                                      _onMarkerTapped(marker.markerId.value, markerData);
+                                    },
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Padding(
+                                      padding: EdgeInsets.all(12),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Icon(
-                                            Icons.person,
-                                            size: 16,
-                                            color: Colors.grey[600],
-                                          ),
-                                          SizedBox(width: 4),
-                                          Text(
-                                            markerData['addedByName'] ?? 'Unknown User',
-                                            style: TextStyle(
-                                              color: Colors.grey[600],
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                          Spacer(),
-                                          if (isMyMarker)
-                                            IconButton(
-                                              icon: Icon(
-                                                Icons.delete_outline,
-                                                color: Colors.red,
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.restaurant,
+                                                color: Color(0xFF00A74C),
                                                 size: 20,
                                               ),
-                                              onPressed: () async {
-                                                final shouldDelete = await _showDeleteConfirmationDialog(
+                                              SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
                                                   markerData['name'] ?? 'Unknown Food',
-                                                  markerData['addedByName'] ?? 'Unknown User',
-                                                  true
-                                                );
-                                                if (shouldDelete == true) {
-                                                  await _deleteMarker(marker.markerId.value, markerData['name'] ?? 'Unknown Food');
-                                                  Navigator.pop(context);
-                                                }
-                                              },
-                                              tooltip: 'Delete',
-                                            ),
-                                          if (markerData['images'] != null &&
-                                              (markerData['images'] as List).isNotEmpty)
+                                                  style: TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                              Container(
+                                                padding: EdgeInsets.symmetric(
+                                                  horizontal: 8,
+                                                  vertical: 4,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Color(0xFF00A74C).withOpacity(0.1),
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                                child: Text(
+                                                  '${distance.toStringAsFixed(1)} $unit',
+                                                  style: TextStyle(
+                                                    color: Color(0xFF00A74C),
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          if (markerData['description'] != null && markerData['description'].isNotEmpty) ...[
+                                            SizedBox(height: 8),
                                             Text(
-                                              '${(markerData['images'] as List).length} photos',
+                                              markerData['description'],
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
                                                 color: Colors.grey[600],
-                                                fontSize: 12,
+                                                fontSize: 14,
                                               ),
                                             ),
+                                          ],
+                                          SizedBox(height: 8),
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.person,
+                                                size: 16,
+                                                color: Colors.grey[600],
+                                              ),
+                                              SizedBox(width: 4),
+                                              Text(
+                                                markerData['addedByName'] ?? 'Unknown User',
+                                                style: TextStyle(
+                                                  color: Colors.grey[600],
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                              Spacer(),
+                                              if (markerData['addedBy'] != null)
+                                                FutureBuilder<double>(
+                                                  future: _reviewService.getUserTrustScore(markerData['addedBy']),
+                                                  builder: (context, snapshot) {
+                                                    if (snapshot.connectionState == ConnectionState.waiting) {
+                                                      return const SizedBox(
+                                                        width: 20,
+                                                        height: 20,
+                                                        child: CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                        ),
+                                                      );
+                                                    }
+                                                    final rating = snapshot.data ?? 0.0;
+                                                    return Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Icon(
+                                                          Icons.star,
+                                                          color: Colors.amber,
+                                                          size: 20,
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          '${rating.toStringAsFixed(1)} ⭐',
+                                                          style: TextStyle(
+                                                            color: Colors.grey[700],
+                                                            fontWeight: FontWeight.w500,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    );
+                                                  },
+                                                ),
+                                              SizedBox(width: 8),
+                                              if (isMyMarker)
+                                                IconButton(
+                                                  icon: Icon(
+                                                    Icons.delete_outline,
+                                                    color: Colors.red,
+                                                    size: 20,
+                                                  ),
+                                                  onPressed: () async {
+                                                    final shouldDelete = await _showDeleteConfirmationDialog(
+                                                      markerData['name'] ?? 'Unknown Food',
+                                                      markerData['addedByName'] ?? 'Unknown User',
+                                                      true
+                                                    );
+                                                    if (shouldDelete == true) {
+                                                      await _deleteMarker(marker.markerId.value, markerData['name'] ?? 'Unknown Food');
+                                                      Navigator.pop(context);
+                                                    }
+                                                  },
+                                                  tooltip: 'Delete',
+                                                ),
+                                              if (markerData['images'] != null &&
+                                                  (markerData['images'] as List).isNotEmpty)
+                                                Text(
+                                                  '${(markerData['images'] as List).length} photos',
+                                                  style: TextStyle(
+                                                    color: Colors.grey[600],
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
                                         ],
                                       ),
-                                    ],
+                                    ),
                                   ),
-                                ),
-                              ),
+                                );
+                              },
                             );
                           },
                         ),
@@ -1732,28 +1910,39 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
       final marker = _markers.firstWhere(
         (marker) => marker.markerId.value == markerId,
       );
-      final markerData = {
+      return {
         'name': marker.infoWindow.title,
         'description': marker.infoWindow.snippet?.split('•')[1].trim(),
         'latitude': marker.position.latitude,
         'longitude': marker.position.longitude,
         'addedByName': marker.infoWindow.snippet?.split('•')[0].replaceAll('Added by ', '').trim(),
-        'images': [], // This will be populated from Firebase
-        'addedBy': '', // This will be populated from Firebase
+        'markerId': markerId,
       };
-
-      // Get the full marker data from Firebase
-      _foodMarkersRef!.child(markerId).get().then((snapshot) {
-        if (snapshot.exists) {
-          final data = snapshot.value as Map<dynamic, dynamic>;
-          markerData['images'] = data['images'] ?? [];
-          markerData['addedBy'] = data['addedBy'] ?? '';
-          markerData['description'] = data['description'] ?? '';
-        }
-      });
-
-      return markerData;
     } catch (e) {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _getFullMarkerData(String markerId) async {
+    if (!_firebaseConnected || _foodMarkersRef == null) return null;
+    try {
+      final snapshot = await _foodMarkersRef!.child(markerId).get();
+      if (snapshot.exists) {
+        final data = snapshot.value as Map<dynamic, dynamic>;
+        final baseData = _getMarkerData(markerId);
+        if (baseData != null) {
+          return {
+            ...baseData,
+            'images': data['images'] ?? [],
+            'addedBy': data['addedBy'] ?? '',
+            'description': data['description'] ?? '',
+            'timestamp': data['timestamp'] ?? 0,
+          };
+        }
+      }
+      return null;
+    } catch (e) {
+      print('Error getting full marker data: $e');
       return null;
     }
   }
@@ -1796,6 +1985,25 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
         break;
     }
   }
+
+  LatLng _generateApproximateLocation(LatLng originalLocation, double radiusKm) {
+    // Convert radius from km to degrees (approximate)
+    final radiusInDegrees = radiusKm / 111.0;
+    
+    // Generate random angle
+    final angle = math.Random().nextDouble() * 2 * math.pi;
+    
+    // Generate random distance within radius
+    final distance = math.Random().nextDouble() * radiusInDegrees;
+    
+    // Calculate new coordinates
+    final lat = originalLocation.latitude + (distance * math.cos(angle));
+    final lng = originalLocation.longitude + (distance * math.sin(angle));
+    
+    return LatLng(lat, lng);
+  }
+
+  Set<Circle> _approximateCircles = {};
 
   @override
   Widget build(BuildContext context) {
@@ -1992,6 +2200,7 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                     zoom: 16.0,
                   ),
                   markers: _markers,
+                  circles: _approximateCircles,
                   myLocationEnabled: true,
                   myLocationButtonEnabled: false,
                   compassEnabled: true,

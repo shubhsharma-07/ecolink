@@ -14,8 +14,14 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Messages'),
-        backgroundColor: Colors.blue,
+        title: Row(
+          children: [
+            Icon(Icons.chat_bubble_outline, size: 24),
+            SizedBox(width: 8),
+            Text('Messages'),
+          ],
+        ),
+        backgroundColor: Color(0xFF00A74C),
         foregroundColor: Colors.white,
         elevation: 2,
       ),
@@ -24,7 +30,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(
-              child: CircularProgressIndicator(color: Colors.blue),
+              child: CircularProgressIndicator(color: Color(0xFF00A74C)),
             );
           }
 
@@ -44,6 +50,16 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                     snapshot.error.toString(),
                     style: TextStyle(color: Colors.red),
                     textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: Icon(Icons.refresh),
+                    label: Text('Try Again'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFF00A74C),
+                      foregroundColor: Colors.white,
+                    ),
                   ),
                 ],
               ),
@@ -83,7 +99,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                     icon: Icon(Icons.map),
                     label: Text('Back to Map'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
+                      backgroundColor: Color(0xFF00A74C),
                       foregroundColor: Colors.white,
                     ),
                   ),
@@ -93,6 +109,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           }
 
           return ListView.builder(
+            padding: EdgeInsets.symmetric(vertical: 8),
             itemCount: conversations.length,
             itemBuilder: (context, index) {
               final conversation = conversations[index];
@@ -112,131 +129,140 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     final timestamp = conversation['lastTimestamp'];
 
     return Card(
-      margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: ListTile(
-        leading: Stack(
-          children: [
-            CircleAvatar(
-              backgroundColor: Colors.blue[100],
-              child: Icon(
-                Icons.person,
-                color: Colors.blue[700],
-              ),
-            ),
-            if (unreadCount > 0)
-              Positioned(
-                right: 0,
-                top: 0,
-                child: Container(
-                  padding: EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  constraints: BoxConstraints(
-                    minWidth: 16,
-                    minHeight: 16,
-                  ),
-                  child: Text(
-                    unreadCount.toString(),
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                otherUserName,
-                style: TextStyle(
-                  fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            ),
-            if (timestamp != null)
-              Text(
-                _formatTimestamp(timestamp),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-              ),
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.restaurant, size: 14, color: Colors.orange),
-                SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    'About: $foodName',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                      fontStyle: FontStyle.italic,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 2),
-            Text(
-              lastMessage,
-              style: TextStyle(
-                fontWeight: unreadCount > 0 ? FontWeight.w500 : FontWeight.normal,
-                color: unreadCount > 0 ? Colors.black87 : Colors.grey[700],
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (unreadCount > 0)
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: Colors.blue,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            SizedBox(width: 8),
-            PopupMenuButton<String>(
-              onSelected: (value) {
-                if (value == 'delete') {
-                  _deleteConversation(conversation);
-                }
-              },
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete, size: 20, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Delete'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+      margin: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
         onTap: () => _openChat(conversation),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Color(0xFF00A74C).withOpacity(0.1),
+                    child: Text(
+                      otherUserName.isNotEmpty ? otherUserName[0].toUpperCase() : '?',
+                      style: TextStyle(
+                        color: Color(0xFF00A74C),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                  if (unreadCount > 0)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        padding: EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: BoxConstraints(
+                          minWidth: 20,
+                          minHeight: 20,
+                        ),
+                        child: Text(
+                          unreadCount > 99 ? '99+' : unreadCount.toString(),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            otherUserName,
+                            style: TextStyle(
+                              fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.w500,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        if (timestamp != null)
+                          Text(
+                            _formatTimestamp(timestamp),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                      ],
+                    ),
+                    SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.restaurant, size: 14, color: Color(0xFF00A74C)),
+                        SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            'About: $foodName',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                              fontStyle: FontStyle.italic,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      lastMessage,
+                      style: TextStyle(
+                        fontWeight: unreadCount > 0 ? FontWeight.w500 : FontWeight.normal,
+                        color: unreadCount > 0 ? Colors.black87 : Colors.grey[700],
+                        fontSize: 14,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<String>(
+                icon: Icon(Icons.more_vert, color: Colors.grey[600]),
+                onSelected: (value) {
+                  if (value == 'delete') {
+                    _deleteConversation(conversation);
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete, size: 20, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('Delete Conversation'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -283,62 +309,116 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     );
   }
 
-Future<void> _deleteConversation(Map<String, dynamic> conversation) async {
-  final shouldDelete = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Row(
-        children: [
-          Icon(Icons.delete_forever, color: Colors.red),
-          SizedBox(width: 8),
-          Text('Delete Conversation'),
+  Future<void> _deleteConversation(Map<String, dynamic> conversation) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.delete_forever, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Delete Conversation'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Are you sure you want to permanently delete this conversation?',
+              style: TextStyle(fontSize: 16),
+            ),
+            SizedBox(height: 16),
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.person, color: Colors.grey[600], size: 16),
+                      SizedBox(width: 8),
+                      Text(
+                        'With: ${conversation['otherUserName']}',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.restaurant, color: Color(0xFF00A74C), size: 16),
+                      SizedBox(width: 8),
+                      Text(
+                        'About: ${conversation['foodName']}',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'This action cannot be undone and will remove the conversation for both users.',
+              style: TextStyle(
+                color: Colors.red[700],
+                fontSize: 13,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.delete, size: 16),
+                SizedBox(width: 4),
+                Text('Delete for Everyone'),
+              ],
+            ),
+          ),
         ],
       ),
-      content: Text(
-        'Are you sure you want to permanently delete this conversation with ${conversation['otherUserName']} for both users? This cannot be undone.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red,
-            foregroundColor: Colors.white,
-          ),
-          child: Text('Delete for Everyone'),
-        ),
-      ],
-    ),
-  );
+    );
 
-  if (shouldDelete == true) {
-    try {
-      await _messagingService.deleteConversationForEveryone(
-        conversation['conversationId'],
-        conversation['otherUserId'],
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Conversation permanently deleted'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      print('Error deleting conversation: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to delete conversation'),
-          backgroundColor: Colors.red,
-        ),
-      );
+    if (shouldDelete == true) {
+      try {
+        await _messagingService.deleteConversationForEveryone(
+          conversation['conversationId'],
+          conversation['otherUserId'],
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Conversation permanently deleted'),
+            backgroundColor: Color(0xFF00A74C),
+          ),
+        );
+      } catch (e) {
+        print('Error deleting conversation: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete conversation'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
-}
-
-
-
-
 }

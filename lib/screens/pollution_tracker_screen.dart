@@ -293,12 +293,18 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
     // Create a custom marker
     final pictureRecorder = ui.PictureRecorder();
     final canvas = Canvas(pictureRecorder);
-    final size = Size(48, 48);
+    final size = Size(64, 64); // Increased from 48x48 to 64x64
     
     // Draw the base marker
     final markerPaint = Paint()
       ..color = config['color']
       ..style = PaintingStyle.fill;
+    
+    // Add border paint
+    final borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0;
     
     final path = Path()
       ..moveTo(size.width / 2, 0)
@@ -307,6 +313,7 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
       ..close();
     
     canvas.drawPath(path, markerPaint);
+    canvas.drawPath(path, borderPaint); // Draw white border
     
     // Draw the number badge if count is provided and greater than 1
     if (count != null && count > 1) {
@@ -314,8 +321,8 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
         ..color = Colors.red
         ..style = PaintingStyle.fill;
       
-      // Increased badge size from 24 to 32
-      final badgeSize = 32.0;
+      // Increased badge size from 32 to 40
+      final badgeSize = 40.0;
       final badgeX = size.width - badgeSize / 2;
       final badgeY = badgeSize / 2;
       
@@ -331,7 +338,7 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
           text: count.toString(),
           style: TextStyle(
             color: Colors.white,
-            fontSize: 20, // Increased from 14 to 20
+            fontSize: 24, // Increased from 20 to 24
             fontWeight: FontWeight.bold,
           ),
         ),

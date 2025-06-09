@@ -9,14 +9,7 @@ import 'services/auth_service.dart';
 /// Initializes Firebase and runs the main app
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  try {
-    await Firebase.initializeApp();
-    print('Firebase initialized successfully');
-  } catch (e) {
-    print('Firebase initialization error: $e');
-  }
-  
+  await Firebase.initializeApp();
   runApp(MyApp());
 }
 
