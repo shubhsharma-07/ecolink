@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "520639068958",
+    "firebase_url": "https://food-locator-app-ec631-default-rtdb.firebaseio.com",
+    "project_id": "food-locator-app-ec631",
+    "storage_bucket": "food-locator-app-ec631.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:520639068958:android:6909947caf464cedaaa70f",
+        "android_client_info": {
+          "package_name": "com.example.hackathon"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAClOZIQY4Hf7yIjmQgEbdHM99-nnVJC1w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,316 @@
+{
+  "rules": {
+    // Users collection - users can read/write their own data and read others
+    "users": {
+      ".read": "auth != null",
+      ".indexOn": ["displayName", "email", "trustScore"],
+      "$userId": {
+        ".write": "auth != null && auth.uid == $userId",
+        ".validate": "newData.hasChildren(['email', 'displayName', 'trustScore']) && 
+                     newData.child('email').isString() && 
+                     newData.child('displayName').isString() && 
+                     newData.child('displayName').val().length <= 50 &&
+                     newData.child('trustScore').isNumber() &&
+                     newData.child('trustScore').val() >= 0 &&
+                     newData.child('trustScore').val() <= 100"
+      }
+    },
+    
+    // Food markers - authenticated users can read all, write their own
+    "foodMarkers": {
+      ".read": "auth != null",
+      ".indexOn": ["addedBy", "timestamp", "location"],
+      "$markerId": {
+        ".write": "auth != null && (!data.exists() || data.child('addedBy').val() == auth.uid)",
+        ".validate": "newData.hasChildren(['addedBy', 'location', 'timestamp', 'description']) && 
+                     newData.child('addedBy').isString() && 
+                     newData.child('location').hasChildren(['latitude', 'longitude']) &&
+                     newData.child('location').child('latitude').isNumber() &&
+                     newData.child('location').child('longitude').isNumber() &&
+                     newData.child('timestamp').isNumber() &&
+                     newData.child('timestamp').val() <= now &&
+                     newData.child('description').isString() &&
+                     newData.child('description').val().length <= 500 &&
+                     (!root.child('userMarkerCounts').child(auth.uid).exists() || 
+                      root.child('userMarkerCounts').child(auth.uid).val() < 100)"
+      }
+    },
+    
+    // Pollution markers - authenticated users can read all, write their own
+    "pollutionMarkers": {
+      ".read": "auth != null",
+      ".indexOn": ["addedBy", "timestamp", "location"],
+      "$markerId": {
+        ".write": "auth != null && (!data.exists() || data.child('addedBy').val() == auth.uid)",
+        ".validate": "newData.hasChildren(['addedBy', 'location', 'timestamp', 'description', 'severity']) && 
+                     newData.child('addedBy').isString() && 
+                     newData.child('location').hasChildren(['latitude', 'longitude']) &&
+                     newData.child('location').child('latitude').isNumber() &&
+                     newData.child('location').child('longitude').isNumber() &&
+                     newData.child('timestamp').isNumber() &&
+                     newData.child('timestamp').val() <= now &&
+                     newData.child('description').isString() &&
+                     newData.child('description').val().length <= 500 &&
+                     newData.child('severity').isNumber() &&
+                     newData.child('severity').val() >= 1 &&
+                     newData.child('severity').val() <= 5 &&
+                     (!root.child('userMarkerCounts').child(auth.uid).exists() || 
+                      root.child('userMarkerCounts').child(auth.uid).val() < 100)"
+      }
+    },
+    
+    // Friend requests - authenticated users can read/write
+    "friendRequests": {
+      ".read": "auth != null",
+      ".indexOn": ["senderId", "recipientId", "status", "timestamp"],
+      "$requestId": {
+        ".write": "auth != null && (
+          !data.exists() || 
+          data.child('senderId').val() == auth.uid || 
+          data.child('recipientId').val() == auth.uid
+        )",
+        ".validate": "newData.hasChildren(['senderId', 'recipientId', 'status', 'timestamp']) && 
+                     newData.child('senderId').isString() && 
+                     newData.child('recipientId').isString() && 
+                     newData.child('status').isString() && 
+                     newData.child('status').val().matches(/^(pending|accepted|rejected)$/) && 
+                     newData.child('timestamp').isNumber() && 
+                     newData.child('timestamp').val() <= now &&
+                     (!root.child('userFriendRequestCounts').child(auth.uid).exists() || 
+                      root.child('userFriendRequestCounts').child(auth.uid).val() < 50)"
+      }
+    },
+    
+    // User friend requests - users can manage their own requests
+    "userFriendRequests": {
+      "$userId": {
+        ".read": "auth != null && auth.uid == $userId",
+        ".write": "auth != null && auth.uid == $userId",
+        "incoming": {
+          "$senderId": {
+            ".write": "auth != null && (auth.uid == $userId || auth.uid == $senderId)",
+            ".validate": "newData.hasChildren(['status', 'timestamp']) && 
+                         newData.child('status').isString() && 
+                         newData.child('timestamp').isNumber() && 
+                         newData.child('timestamp').val() <= now"
+          }
+        },
+        "outgoing": {
+          "$recipientId": {
+            ".write": "auth != null && (auth.uid == $userId || auth.uid == $recipientId)",
+            ".validate": "newData.hasChildren(['status', 'timestamp']) && 
+                         newData.child('status').isString() && 
+                         newData.child('timestamp').isNumber() && 
+                         newData.child('timestamp').val() <= now"
+          }
+        }
+      }
+    },
+    
+    // User friends - Allow reading friends lists for leaderboard
+    "userFriends": {
+      ".read": "auth != null",
+      ".indexOn": ["userId", "friendId"],
+      "$userId": {
+        ".write": "auth != null && auth.uid == $userId",
+        "$friendId": {
+          ".write": "auth != null && (auth.uid == $userId || auth.uid == $friendId)",
+          ".validate": "newData.hasChildren(['timestamp']) && 
+                       newData.child('timestamp').isNumber() && 
+                       newData.child('timestamp').val() <= now"
+        }
+      }
+    },
+    
+    // Conversations - allow authenticated users to read/write
+    "conversations": {
+      ".read": "auth != null",
+      ".indexOn": ["participants", "lastMessageTimestamp"],
+      "$conversationId": {
+        ".write": "auth != null && (
+          !data.exists() || 
+          data.child('participants').child(auth.uid).exists()
+        )",
+        ".validate": "newData.hasChildren(['participants', 'lastMessageTimestamp']) && 
+                     newData.child('participants').hasChild(auth.uid) && 
+                     newData.child('lastMessageTimestamp').isNumber() && 
+                     newData.child('lastMessageTimestamp').val() <= now",
+        "messages": {
+          ".indexOn": ["timestamp"],
+          "$messageId": {
+            ".write": "auth != null && (
+              !data.exists() || 
+              data.child('senderId').val() == auth.uid
+            )",
+            ".validate": "newData.hasChildren(['senderId', 'text', 'timestamp']) && 
+                         newData.child('senderId').isString() && 
+                         newData.child('text').isString() && 
+                         newData.child('text').val().length <= 1000 && 
+                         newData.child('timestamp').isNumber() && 
+                         newData.child('timestamp').val() <= now"
+          }
+        }
+      }
+    },
+    
+    // User conversations - allow users to manage their own conversations
+    "userConversations": {
+      "$userId": {
+        ".read": "auth != null && auth.uid == $userId",
+        ".write": "auth != null && auth.uid == $userId",
+        ".indexOn": ["lastMessageTimestamp"],
+        "$conversationId": {
+          ".write": "auth != null && (
+            !data.exists() || 
+            data.child('otherUserId').val() == auth.uid || 
+            data.child('userId').val() == auth.uid
+          )",
+          ".validate": "newData.hasChildren(['otherUserId', 'lastMessageTimestamp']) && 
+                       newData.child('otherUserId').isString() && 
+                       newData.child('lastMessageTimestamp').isNumber() && 
+                       newData.child('lastMessageTimestamp').val() <= now"
+        }
+      }
+    },
+    
+    // Eco challenges - read for all authenticated users
+    "ecoChallenges": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      ".indexOn": ["category", "difficulty", "timestamp"],
+      "$challengeId": {
+        ".validate": "newData.hasChildren(['title', 'description', 'category', 'difficulty', 'timestamp']) && 
+                     newData.child('title').isString() && 
+                     newData.child('title').val().length <= 100 && 
+                     newData.child('description').isString() && 
+                     newData.child('description').val().length <= 1000 && 
+                     newData.child('category').isString() && 
+                     newData.child('difficulty').isNumber() && 
+                     newData.child('difficulty').val() >= 1 && 
+                     newData.child('difficulty').val() <= 5 && 
+                     newData.child('timestamp').isNumber() && 
+                     newData.child('timestamp').val() <= now"
+      }
+    },
+    
+    // User challenge progress - Allow reading for leaderboard
+    "userChallengeProgress": {
+      ".read": "auth != null",
+      ".indexOn": ["userId", "challengeId", "status"],
+      "$userId": {
+        ".write": "auth != null && auth.uid == $userId",
+        "$challengeId": {
+          ".validate": "newData.hasChildren(['status', 'progress', 'lastUpdated']) && 
+                       newData.child('status').isString() && 
+                       newData.child('status').val().matches(/^(not_started|in_progress|completed)$/) && 
+                       newData.child('progress').isNumber() && 
+                       newData.child('progress').val() >= 0 && 
+                       newData.child('progress').val() <= 100 && 
+                       newData.child('lastUpdated').isNumber() && 
+                       newData.child('lastUpdated').val() <= now"
+        }
+      }
+    },
+    
+    // User challenges - Allow reading for leaderboard
+    "userChallenges": {
+      ".read": "auth != null",
+      ".indexOn": ["userId", "status"],
+      "$userId": {
+        ".write": "auth != null && auth.uid == $userId",
+        "$challengeId": {
+          ".validate": "newData.hasChildren(['status', 'startedAt']) && 
+                       newData.child('status').isString() && 
+                       newData.child('status').val().matches(/^(active|completed|abandoned)$/) && 
+                       newData.child('startedAt').isNumber() && 
+                       newData.child('startedAt').val() <= now"
+        }
+      }
+    },
+
+    // User reviews system
+    "userReviews": {
+      ".read": "auth != null",
+      ".indexOn": ["reviewedId", "reviewerId", "rating", "timestamp"],
+      "$reviewId": {
+        ".write": "auth != null && (
+          !data.exists() || 
+          data.child('reviewerId').val() == auth.uid
+        )",
+        ".validate": "newData.hasChildren(['reviewerId', 'reviewedId', 'rating', 'comment', 'timestamp']) && 
+                     newData.child('reviewerId').isString() && 
+                     newData.child('reviewerId').val() == auth.uid && 
+                     newData.child('reviewedId').isString() && 
+                     newData.child('rating').isNumber() && 
+                     newData.child('rating').val() >= 1 && 
+                     newData.child('rating').val() <= 5 && 
+                     newData.child('comment').isString() && 
+                     newData.child('comment').val().length <= 1000 && 
+                     newData.child('timestamp').isNumber() && 
+                     newData.child('timestamp').val() <= now && 
+                     (!root.child('userReviewCounts').child(auth.uid).exists() || 
+                      root.child('userReviewCounts').child(auth.uid).val() < 50)"
+      }
+    },
+
+    // User review eligibility
+    "userReviewEligibility": {
+      "$userId": {
+        ".read": "auth != null && auth.uid == $userId",
+        ".write": "auth != null && auth.uid == $userId",
+        "$reviewedId": {
+          ".write": "auth != null && auth.uid == $userId",
+          ".validate": "newData.val() == true && 
+                       newData.hasChildren(['timestamp']) && 
+                       newData.child('timestamp').isNumber() && 
+                       newData.child('timestamp').val() <= now"
+        }
+      }
+    },
+
+    // User trust scores
+    "userTrustScores": {
+      ".read": "auth != null",
+      ".indexOn": ["score"],
+      "$userId": {
+        ".write": "auth != null && (
+          auth.uid == $userId || 
+          root.child('userReviews').child(auth.uid).child('$userId').exists() ||
+          root.child('userReviews').child('$userId').child(auth.uid).exists()
+        )",
+        ".validate": "newData.isNumber() && 
+                     newData.val() >= 0 && 
+                     newData.val() <= 100 && 
+                     newData.hasChildren(['lastUpdated']) && 
+                     newData.child('lastUpdated').isNumber() && 
+                     newData.child('lastUpdated').val() <= now"
+      }
+    },
+
+    // Rate limiting counters
+    "userMarkerCounts": {
+      "$userId": {
+        ".write": "auth != null && auth.uid == $userId",
+        ".validate": "newData.isNumber() && newData.val() >= 0"
+      }
+    },
+    "userFriendRequestCounts": {
+      "$userId": {
+        ".write": "auth != null && auth.uid == $userId",
+        ".validate": "newData.isNumber() && newData.val() >= 0"
+      }
+    },
+    "userReviewCounts": {
+      "$userId": {
+        ".write": "auth != null && auth.uid == $userId",
+        ".validate": "newData.isNumber() && newData.val() >= 0"
+      }
+    },
+    
+    // Default rule - deny access to anything else
+    "$other": {
+      ".read": false,
+      ".write": false
+    }
+  }
+} 

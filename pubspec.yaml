@@ -1,0 +1,46 @@
+name: hackathon
+description: A community food locator app with shared markers
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: ">=1.17.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  google_maps_flutter: ^2.5.0
+  location: ^5.0.3
+  firebase_core: ^2.24.2
+  firebase_database: ^10.4.0
+  firebase_auth: ^4.15.2
+  image_picker: ^1.0.4
+  cupertino_icons: ^1.0.2
+  google_generative_ai: ^0.2.0
+  timeago: ^3.6.0
+  firebase_remote_config: ^4.3.8
+  firebase_app_check: ^0.2.1+14
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path_android: "assets/icon/icon.png"
+  image_path_ios: "assets/icon/iosicon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/icon.png"
+  remove_alpha_ios: true
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/logo.png
+    - assets/icon/
