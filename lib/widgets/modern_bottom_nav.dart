@@ -20,10 +20,10 @@ class ModernBottomNav extends StatelessWidget {
     return Container(
       height: 65,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Theme.of(context).shadowColor.withOpacity(0.1),
             blurRadius: 10,
             offset: const Offset(0, -5),
           ),
@@ -97,7 +97,7 @@ class ModernBottomNav extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? color : color.withOpacity(0.5),
+                color: isSelected ? color : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                 fontSize: 10,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
               ),

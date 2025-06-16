@@ -5,6 +5,7 @@ import '../services/friends_service.dart';
 import '../screens/pollution_tracker_screen.dart';
 import '../screens/food_locator.dart';
 import '../widgets/modern_bottom_nav.dart';
+import '../widgets/tab_page_transition.dart';
 
 
 class EcoChallengesScreen extends StatefulWidget {
@@ -680,8 +681,10 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
     switch (index) {
       case 0:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const FoodLocatorScreen(),
+          TabPageTransition(
+            page: const FoodLocatorScreen(),
+            fromIndex: _currentIndex,
+            toIndex: index,
           ),
         );
         break;
@@ -690,8 +693,10 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
         break;
       case 2:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const PollutionTrackerScreen(),
+          TabPageTransition(
+            page: const PollutionTrackerScreen(),
+            fromIndex: _currentIndex,
+            toIndex: index,
           ),
         );
         break;
@@ -705,13 +710,7 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
         appBar: AppBar(
           backgroundColor: Colors.white,
           elevation: 2,
-          title: const Row(
-            children: [
-              Icon(Icons.eco, color: greenColor),
-              SizedBox(width: 8),
-              Text('Eco Challenges', style: TextStyle(color: greenColor, fontWeight: FontWeight.bold)),
-            ],
-          ),
+          title: Icon(Icons.eco, color: Colors.green[600]),
         ),
         body: const Center(
           child: Column(
@@ -732,20 +731,14 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.black,
         elevation: 2,
-        title: const Row(
-          children: [
-            Icon(Icons.eco, color: greenColor),
-            SizedBox(width: 8),
-            Text('Eco Challenges', style: TextStyle(color: greenColor, fontWeight: FontWeight.bold)),
-          ],
-        ),
+        title: Icon(Icons.eco, color: Colors.green[600]),
         actions: [
           IconButton(
-            icon: const Icon(Icons.leaderboard, color: greenColor),
+            icon: Icon(Icons.leaderboard, color: Colors.green[600]),
             onPressed: _toggleLeaderboard,
-            tooltip: 'Friends Leaderboard',
+            tooltip: 'Leaderboard',
           ),
           IconButton(
             icon: Icon(Icons.refresh, color: Colors.grey[700]),
@@ -766,9 +759,9 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              boxShadow: const [
+              boxShadow: [
                 BoxShadow(
-                  color: Colors.black12,
+                  color: Theme.of(context).shadowColor.withOpacity(0.1),
                   blurRadius: 4,
                   offset: Offset(0, 2),
                 ),
@@ -837,7 +830,7 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
+        color: Theme.of(context).colorScheme.surface.withOpacity(0.2),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -846,16 +839,16 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
           const SizedBox(height: 8),
           Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 24,
               fontWeight: FontWeight.bold,
             ),
           ),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white70,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
               fontSize: 12,
             ),
           ),
@@ -872,37 +865,73 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
 
     return Column(
       children: [
-        // Category Filter
+        // Category Filter Dropdown
         Container(
-          height: 50,
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: _categories.length,
-            itemBuilder: (context, index) {
-              final category = _categories[index];
-              final isSelected = category == _selectedCategory;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(category),
-                  selected: isSelected,
-                  onSelected: (selected) {
-                    if (selected) {
-                      setState(() {
-                        _selectedCategory = category;
-                      });
-                    }
-                  },
-                  backgroundColor: Colors.grey[200],
-                  selectedColor: greenColor.withOpacity(0.2),
-                  labelStyle: TextStyle(
-                    color: isSelected ? greenColor : Colors.grey[700],
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Theme.of(context).dividerColor),
+            boxShadow: [
+              BoxShadow(
+                color: Theme.of(context).shadowColor.withOpacity(0.05),
+                blurRadius: 10,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _selectedCategory,
+              isExpanded: true,
+              icon: Icon(Icons.arrow_drop_down, color: Colors.green[600]),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 16),
+              dropdownColor: Theme.of(context).colorScheme.surface,
+              menuMaxHeight: 400,
+              borderRadius: BorderRadius.circular(12),
+              elevation: 8,
+              items: _categories.map((String category) {
+                return DropdownMenuItem<String>(
+                  value: category,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Colors.grey[200]!,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _getCategoryIcon(category),
+                          color: Colors.green[600],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          category,
+                          style: TextStyle(
+                            color: category == _selectedCategory ? Colors.green[600] : Theme.of(context).colorScheme.onSurface,
+                            fontWeight: category == _selectedCategory ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                if (newValue != null) {
+                  setState(() {
+                    _selectedCategory = newValue;
+                  });
+                }
+              },
+            ),
           ),
         ),
         // Challenges List
@@ -1031,48 +1060,67 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
     );
   }
 
+  IconData _getCategoryIcon(String category) {
+    switch (category) {
+      case 'All':
+        return Icons.category;
+      case 'Shopping':
+        return Icons.shopping_bag;
+      case 'Waste Reduction':
+        return Icons.delete_outline;
+      case 'Transportation':
+        return Icons.directions_car;
+      case 'Local Support':
+        return Icons.store;
+      case 'Nutrition':
+        return Icons.restaurant;
+      case 'Growing':
+        return Icons.local_florist;
+      case 'Community':
+        return Icons.people;
+      case 'Energy':
+        return Icons.power;
+      case 'Water':
+        return Icons.water_drop;
+      case 'Education':
+        return Icons.school;
+      default:
+        return Icons.category;
+    }
+  }
+
   Widget _buildLeaderboard() {
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: greenColor.withOpacity(0.1),
-            border: Border(
-              bottom: BorderSide(color: greenColor.withOpacity(0.25), width: 1),
-            ),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.leaderboard, color: greenColor, size: 24),
-              const SizedBox(width: 8),
-              const Text(
-                'Friends Leaderboard',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: greenColor,
-                ),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () {
-                  _loadFriendsLeaderboard();
-                  _showSnackBar('Refreshing leaderboard...', Colors.blue);
-                },
-                icon: const Icon(Icons.refresh, size: 16, color: greenColor),
-                label: const Text('Refresh', style: TextStyle(color: greenColor)),
-                style: TextButton.styleFrom(
-                  foregroundColor: greenColor,
-                ),
-              ),
-            ],
-          ),
-        ),
+        _buildLeaderboardHeader(),
         Expanded(
           child: _friendsLeaderboard.length <= 1 ? _buildEmptyLeaderboard() : _buildLeaderboardList(),
         ),
       ],
+    );
+  }
+
+  Widget _buildLeaderboardHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Friends Leaderboard',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+              color: Colors.white,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            color: Colors.white,
+            onPressed: _refreshLeaderboard,
+          ),
+        ],
+      ),
     );
   }
 
@@ -1127,107 +1175,132 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
         final isCurrentUser = user['isCurrentUser'] == true;
         final rank = user['rank'];
         return Card(
-          margin: const EdgeInsets.only(bottom: 8),
+          margin: const EdgeInsets.only(bottom: 12),
           elevation: isCurrentUser ? 4 : 1,
-          color: isCurrentUser ? greenColor.withOpacity(0.1) : Colors.white,
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(16),
-            leading: Row(
-              mainAxisSize: MainAxisSize.min,
+          color: Theme.of(context).colorScheme.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: isCurrentUser 
+                ? BorderSide(color: greenColor, width: 2)
+                : BorderSide.none,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Rank badge
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: _getRankColor(rank),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '#$rank',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
+                Row(
+                  children: [
+                    // Rank number
+                    Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        '#${user['rank']}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: user['rank'] == 1
+                              ? Colors.amber[600]
+                              : user['rank'] == 2
+                                  ? Colors.grey[400]
+                                  : user['rank'] == 3
+                                      ? Colors.orange[700]
+                                      : Colors.white,
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // User avatar
-                CircleAvatar(
-                  backgroundColor: user['levelColor'],
-                  child: Text(
-                    user['userName'][0].toUpperCase(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                    const SizedBox(width: 12),
+                    // User avatar
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: greenColor.withOpacity(0.2),
+                      child: Text(
+                        (user['userName'] ?? '?').toString().isNotEmpty
+                            ? user['userName'][0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    // Username
+                    Expanded(
+                      child: Text(
+                        user['userName'] ?? 'Unknown',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Colors.white,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    // Trophy badge for top 3
+                    if (user['rank'] != null && user['rank'] <= 3)
+                      _buildRankBadge(user['rank']) ?? const SizedBox.shrink(),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    // Points
+                    Column(
+                      children: [
+                        const Icon(Icons.star, color: Colors.amber, size: 24),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${user['points']}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.amber[700],
+                          ),
+                        ),
+                        const Text(
+                          'Points',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    // Completed challenges
+                    Column(
+                      children: [
+                        const Icon(Icons.check_circle, color: greenColor, size: 24),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${user['completedChallenges']}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: greenColor,
+                          ),
+                        ),
+                        const Text(
+                          'Completed',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ],
             ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    isCurrentUser ? '${user['userName']} (You)' : user['userName'],
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: isCurrentUser ? greenColor : Colors.black87,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: user['levelColor'].withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    user['level'],
-                    style: TextStyle(
-                      color: user['levelColor'],
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            subtitle: Row(
-  children: [
-    const Icon(Icons.star, color: Colors.amber, size: 16),
-    const SizedBox(width: 4),
-    Flexible(
-      child: Text(
-        '${user['points']} points',
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          color: Colors.amber[700],
-        ),
-        overflow: TextOverflow.ellipsis,
-        maxLines: 1,
-      ),
-    ),
-    const SizedBox(width: 12),
-    const Icon(Icons.check_circle, color: greenColor, size: 16),
-    const SizedBox(width: 4),
-    Flexible(
-      child: Text(
-        '${user['completedChallenges']} completed',
-        style: const TextStyle(
-          color: greenColor,
-        ),
-        overflow: TextOverflow.ellipsis,
-        maxLines: 1,
-      ),
-    ),
-  ],
-),
-
-            trailing: rank <= 3 ? _buildRankBadge(rank) : null,
           ),
         );
       },
@@ -1263,5 +1336,10 @@ class _EcoChallengesScreenState extends State<EcoChallengesScreen> {
         return null;
     }
     return Icon(icon, color: color, size: 28);
+  }
+
+  void _refreshLeaderboard() {
+    _loadFriendsLeaderboard();
+    _showSnackBar('Refreshing leaderboard...', Colors.blue);
   }
 }

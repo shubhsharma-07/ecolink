@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/friends_service.dart';
 import 'friend_requests_screen.dart';
 import 'search_users_screen.dart';
+import 'package:firebase_database/firebase_database.dart';
+import '../services/review_service.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -90,9 +92,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.blue[50],
+              color: Theme.of(context).colorScheme.surface,
               border: Border(
-                bottom: BorderSide(color: Colors.grey[300]!),
+                bottom: BorderSide(color: Theme.of(context).dividerColor),
               ),
             ),
             child: Row(
@@ -245,11 +247,11 @@ class _FriendsScreenState extends State<FriendsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Colors.black12,
+            color: Theme.of(context).shadowColor.withOpacity(0.1),
             blurRadius: 4,
             offset: Offset(0, 2),
           ),
@@ -271,7 +273,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
             title,
             style: TextStyle(
               fontSize: 12,
-              color: Colors.grey[600],
+              color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -311,7 +313,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
             if (value == 'remove') {
               _removeFriend(friend);
             } else if (value == 'message') {
-              // TODO: Navigate to message this friend
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Messaging friends coming soon!'),
@@ -344,8 +345,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
           ],
         ),
         onTap: () {
-          // Show friend profile or options
-          _showFriendOptions(friend);
+          _showFriendProfileDialog(friend);
         },
       ),
     );
@@ -379,49 +379,83 @@ class _FriendsScreenState extends State<FriendsScreen> {
     }
   }
 
-  void _showFriendOptions(Map<String, dynamic> friend) {
+  void _showFriendProfileDialog(Map<String, dynamic> friend) async {
+    final userId = friend['userId'] ?? '';
+    final userName = friend['userName'] ?? 'Unknown User';
+    final DatabaseReference usersRef = FirebaseDatabase.instance.ref().child('users').child(userId);
+    final userSnapshot = await usersRef.get();
+    final createdAt = userSnapshot.child('createdAt').value;
+    final joinDate = createdAt != null ? DateTime.fromMillisecondsSinceEpoch(createdAt is int ? createdAt : int.tryParse(createdAt.toString()) ?? 0) : null;
+    final reviews = await ReviewService().getUserReviews(userId);
     showModalBottomSheet(
       context: context,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Colors.blue[100],
-                child: Icon(Icons.person, color: Colors.blue[700]),
-              ),
-              title: Text(
-                friend['userName'] ?? 'Unknown User',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: const Text('Friend'),
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.message, color: Colors.blue),
-              title: const Text('Send Message'),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Direct friend messaging coming soon!'),
-                    backgroundColor: Colors.blue,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => SingleChildScrollView(
+          controller: scrollController,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: Colors.blue[100],
+                      radius: 32,
+                      child: Icon(Icons.person, color: Colors.blue[700], size: 32),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+                          if (joinDate != null)
+                            Text('Joined: ${joinDate.year}-${joinDate.month.toString().padLeft(2, '0')}-${joinDate.day.toString().padLeft(2, '0')}', style: TextStyle(color: Colors.grey[600], fontSize: 14)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                const Text('User Reviews', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 10),
+                if (reviews.isEmpty)
+                  const Text('No reviews yet', style: TextStyle(color: Colors.grey)),
+                for (final review in reviews)
+                  Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.star, color: Colors.amber, size: 20),
+                              const SizedBox(width: 4),
+                              Text('${review['rating']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              const Spacer(),
+                              Text(review['reviewerName'] ?? 'Anonymous', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(review['comment'] ?? '', style: const TextStyle(fontSize: 14)),
+                        ],
+                      ),
+                    ),
                   ),
-                );
-              },
+              ],
             ),
-            ListTile(
-              leading: const Icon(Icons.person_remove, color: Colors.red),
-              title: const Text('Remove Friend'),
-              onTap: () {
-                Navigator.pop(context);
-                _removeFriend(friend);
-              },
-            ),
-            const SizedBox(height: 16),
-          ],
+          ),
         ),
       ),
     );

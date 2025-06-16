@@ -268,25 +268,6 @@
       }
     },
 
-    // User trust scores
-    "userTrustScores": {
-      ".read": "auth != null",
-      ".indexOn": ["score"],
-      "$userId": {
-        ".write": "auth != null && (
-          auth.uid == $userId || 
-          root.child('userReviews').child(auth.uid).child('$userId').exists() ||
-          root.child('userReviews').child('$userId').child(auth.uid).exists()
-        )",
-        ".validate": "newData.isNumber() && 
-                     newData.val() >= 0 && 
-                     newData.val() <= 100 && 
-                     newData.hasChildren(['lastUpdated']) && 
-                     newData.child('lastUpdated').isNumber() && 
-                     newData.child('lastUpdated').val() <= now"
-      }
-    },
-
     // Rate limiting counters
     "userMarkerCounts": {
       "$userId": {

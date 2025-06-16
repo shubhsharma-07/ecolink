@@ -20,6 +20,12 @@ import '../services/gemini_service.dart';
 import '../widgets/modern_bottom_nav.dart';
 import '../widgets/review_widget.dart';
 import '../services/review_service.dart';
+import '../widgets/tab_page_transition.dart';
+
+
+
+
+
 
 class FoodLocatorScreen extends StatefulWidget {
   const FoodLocatorScreen({super.key});
@@ -52,6 +58,7 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
   final TextEditingController _radiusController = TextEditingController();
   bool _isAnalyzing = false;
   final int _currentIndex = 0;
+  bool _isCenteredOnUser = true;
 
   // Constants for radius limits
   static const double _maxRadiusMiles = 100.0;
@@ -61,7 +68,7 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
   String get _currentUserId => _authService.currentUserId ?? 'unknown';
   String get _currentUserName => _authService.currentUserDisplayName;
   bool get _isAnonymous => false;
-
+  final Map<String, Map<String, dynamic>> _markerDataCache = {};
   @override
   void initState() {
     super.initState();
@@ -70,10 +77,11 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
   }
 
   @override
-  void dispose() {
-    _radiusController.dispose();
-    super.dispose();
-  }
+void dispose() {
+  _radiusController.dispose();
+  _markerDataCache.clear();
+  super.dispose();
+}
 
   Future<void> _initializeApp() async {
     await _initializeFirebase();
@@ -129,7 +137,6 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
         setState(() {
           _currentLocation = newLocation;
         });
-        _animateToLocation(newLocation);
       });
     } catch (e) {
       _setError('Failed to get location: $e');
@@ -177,80 +184,84 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
   }
 
   void _buildMarkersFromData(Map<dynamic, dynamic> data) {
-    setState(() {
-      _markers.removeWhere((marker) => _isFoodMarker(marker));
-      _approximateCircles.clear();
-      
-      data.forEach((key, value) {
-        try {
-          final markerData = Map<String, dynamic>.from(value);
-          final isMyMarker = markerData['addedBy'] == _currentUserId;
-          final addedByName = markerData['addedByName'] ?? 'Unknown User';
-          
-          // Safely get location data with null checks
-          final locationData = markerData['location'];
-          if (locationData == null) {
-            print('Warning: Location data is null for marker $key');
-            return; // Skip this marker
-          }
-          
-          final latitude = locationData['latitude'];
-          final longitude = locationData['longitude'];
-          
-          if (latitude == null || longitude == null) {
-            print('Warning: Latitude or longitude is null for marker $key');
-            return; // Skip this marker
-          }
-          
-          // Get the original location
-          final originalLatLng = LatLng(
-            latitude.toDouble(),
-            longitude.toDouble(),
-          );
-          
-          // For other users' markers, use approximate location
-          final displayLatLng = isMyMarker 
-            ? originalLatLng 
-            : _generateApproximateLocation(originalLatLng, 0.5); // 500m radius
-          
-          // Add marker
-          _markers.add(
-            Marker(
-              markerId: MarkerId(key),
-              position: displayLatLng,
-              infoWindow: InfoWindow(
-                title: markerData['name'] ?? 'Unknown Food',
-                snippet: isMyMarker 
-                  ? 'Added by you • Tap to view details' 
-                  : 'Added by $addedByName • Approximate location • Tap to view details',
-              ),
-              icon: BitmapDescriptor.defaultMarkerWithHue(
-                isMyMarker ? BitmapDescriptor.hueOrange : BitmapDescriptor.hueRed
-              ),
-              onTap: () => _onMarkerTapped(key, markerData),
+  setState(() {
+    _markers.removeWhere((marker) => _isFoodMarker(marker));
+    _approximateCircles.clear();
+    _markerDataCache.clear(); // Clear the cache
+    
+    data.forEach((key, value) {
+      try {
+        final markerData = Map<String, dynamic>.from(value);
+        final isMyMarker = markerData['addedBy'] == _currentUserId;
+        final addedByName = markerData['addedByName'] ?? 'Unknown User';
+        
+        // Store the complete marker data in cache
+        _markerDataCache[key] = markerData;
+        
+        // Safely get location data with null checks
+        final locationData = markerData['location'];
+        if (locationData == null) {
+          print('Warning: Location data is null for marker $key');
+          return; // Skip this marker
+        }
+        
+        final latitude = locationData['latitude'];
+        final longitude = locationData['longitude'];
+        
+        if (latitude == null || longitude == null) {
+          print('Warning: Latitude or longitude is null for marker $key');
+          return; // Skip this marker
+        }
+        
+        // Get the original location
+        final originalLatLng = LatLng(
+          latitude.toDouble(),
+          longitude.toDouble(),
+        );
+        
+        // For other users' markers, use approximate location
+        final displayLatLng = isMyMarker 
+          ? originalLatLng 
+          : _generateApproximateLocation(originalLatLng, 0.5); // 500m radius
+        
+        // Add marker
+        _markers.add(
+          Marker(
+            markerId: MarkerId(key),
+            position: displayLatLng,
+            infoWindow: InfoWindow(
+              title: markerData['name'] ?? 'Unknown Food',
+              snippet: isMyMarker 
+                ? 'Added by you • Tap to view details' 
+                : 'Added by $addedByName • Approximate location • Tap to view details',
+            ),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              isMyMarker ? BitmapDescriptor.hueOrange : BitmapDescriptor.hueRed
+            ),
+            onTap: () => _onMarkerTapped(key, markerData),
+          ),
+        );
+        
+        // Add circle for approximate locations of other users' markers
+        if (!isMyMarker) {
+          _approximateCircles.add(
+            Circle(
+              circleId: CircleId('approximate_$key'),
+              center: displayLatLng,
+              radius: 500, // 500 meters
+              fillColor: Colors.red.withOpacity(0.1),
+              strokeColor: Colors.red.withOpacity(0.3),
+              strokeWidth: 1,
             ),
           );
-          
-          // Add circle for approximate locations of other users' markers
-          if (!isMyMarker) {
-            _approximateCircles.add(
-              Circle(
-                circleId: CircleId('approximate_$key'),
-                center: displayLatLng,
-                radius: 500, // 500 meters
-                fillColor: Colors.red.withOpacity(0.1),
-                strokeColor: Colors.red.withOpacity(0.3),
-                strokeWidth: 1,
-              ),
-            );
-          }
-        } catch (e, stackTrace) {
-          print('Error processing marker $key: $e');
-          print('Stack trace: $stackTrace');
         }
-      });
+      } catch (e, stackTrace) {
+        print('Error processing marker $key: $e');
+        print('Stack trace: $stackTrace');
+      }
     });
-  }
+  });
+}
 
   Future<void> _addFoodMarker() async {
     if (_currentLocation == null) {
@@ -301,20 +312,29 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
         'images': base64Images,
         'imageCount': base64Images.length,
       };
-      setState(() {
-        _markers.add(
-          Marker(
-            markerId: MarkerId(markerId),
-            position: LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!),
-            infoWindow: InfoWindow(
-              title: foodData['name'],
-              snippet: 'Added by you • Tap to view details',
-            ),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-            onTap: () => _onMarkerTapped(markerId, markerData),
-          ),
-        );
-      });
+      // In your _addFoodMarker method, after creating markerData and before setState, add:
+
+// ... existing code for creating markerData ...
+
+// Add to cache
+_markerDataCache[markerId] = markerData;
+
+setState(() {
+  _markers.add(
+    Marker(
+      markerId: MarkerId(markerId),
+      position: LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!),
+      infoWindow: InfoWindow(
+        title: foodData['name'],
+        snippet: 'Added by you • Tap to view details',
+      ),
+      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+      onTap: () => _onMarkerTapped(markerId, markerData),
+    ),
+  );
+});
+
+// ... rest of the method ...
       if (_firebaseConnected && _foodMarkersRef != null) {
         await _foodMarkersRef!.child(markerId).set(markerData);
         Navigator.of(context).pop();
@@ -358,342 +378,380 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
     builder: (BuildContext context) {
       return StatefulBuilder(
         builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.restaurant, color: Color(0xFF00A74C)),
-                SizedBox(width: 8),
-                Text('Add Food Location'),
-              ],
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(32),
             ),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Tell us about the food at your location:'),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: nameController,
-                      onChanged: (value) => foodName = value,
-                      decoration: const InputDecoration(
-                        labelText: 'Food Name *',
-                        hintText: 'e.g., Pizza, Burger, Tacos',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.fastfood),
+            child: Container(
+              width: double.infinity,
+              height: MediaQuery.of(context).size.height * 0.92,
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Fixed header
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.restaurant, color: Color(0xFF00A74C)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Add Food Location',
+                          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                          softWrap: true,
+                          overflow: TextOverflow.visible,
+                          maxLines: 2,
+                        ),
                       ),
-                      textCapitalization: TextCapitalization.words,
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: descriptionController,
-                      onChanged: (value) => description = value,
-                      decoration: const InputDecoration(
-                        labelText: 'Description *',
-                        hintText: 'Describe the food, price, availability...',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.description),
-                      ),
-                      maxLines: 3,
-                      textCapitalization: TextCapitalization.sentences,
-                    ),
-                    const SizedBox(height: 16),
-                    // AI Analysis Button - Conditional rendering based on analysis state
-                    if (!_aiAnalysisComplete) ...[
-                      SizedBox(
-                        width: double.infinity,
-                        child: _isAnalyzing
-                            ? Container(
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[300],
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Center(
-                                  child: SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00A74C)),
-                                    ),
-                                  ),
-                                ),
-                              )
-                            : ElevatedButton.icon(
-                                onPressed: selectedImages.isEmpty
-                                    ? null
-                                    : () async {
-                                        if (selectedImages.isEmpty) return;
-                                        
-                                        setDialogState(() {
-                                          _isAnalyzing = true;
-                                        });
-                                        
-                                        try {
-                                          print('Starting AI analysis...');
-                                          final analysis = await _geminiService.analyzeFoodImage(selectedImages[0]);
-                                          print('Analysis complete: $analysis');
-                                          
-                                          if (analysis['name'] == 'Error') {
-                                            throw Exception(analysis['description']);
-                                          }
-
-                                          if (analysis['name'] == 'NO_FOOD_DETECTED') {
-                                            showDialog(
-                                              context: context,
-                                              builder: (context) => AlertDialog(
-                                                title: const Row(
-                                                  children: [
-                                                    Icon(Icons.warning_amber_rounded, color: Colors.orange),
-                                                    SizedBox(width: 8),
-                                                    Text('No Food Detected'),
-                                                  ],
-                                                ),
-                                                content: const Text('The AI could not detect any food items in the image. Please try again with a clearer image of food items.'),
-                                                actions: [
-                                                  TextButton(
-                                                    onPressed: () => Navigator.of(context).pop(),
-                                                    child: const Text('OK'),
-                                                  ),
-                                                ],
-                                              ),
-                                            );
-                                            // Reset the analysis state but don't mark as complete
-                                            setDialogState(() {
-                                              _isAnalyzing = false;
-                                            });
-                                            return;
-                                          }
-                                          
-                                          nameController.text = analysis['name'] ?? '';
-                                          descriptionController.text = '${analysis['description']}\n\nCharacteristics: ${analysis['characteristics']}';
-                                          
-                                          foodName = nameController.text;
-                                          description = descriptionController.text;
-                                          
-                                          // Mark analysis as complete
-                                          setDialogState(() {
-                                            _isAnalyzing = false;
-                                            _aiAnalysisComplete = true;
-                                          });
-                                          
-                                          // Show warning message about verifying content
-                                          showDialog(
-                                            context: context,
-                                            builder: (context) => AlertDialog(
-                                              title: const Row(
-                                                children: [
-                                                  Icon(Icons.check_circle, color: Color(0xFF00A74C)),
-                                                  SizedBox(width: 8),
-                                                  Text('Analysis Complete'),
-                                                ],
-                                              ),
-                                              content: const Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    'The AI has generated a description and title for your food item. Please carefully review and edit the content to ensure it accurately represents your food item.',
-                                                    style: TextStyle(fontSize: 16),
-                                                  ),
-                                                  SizedBox(height: 16),
-                                                  Text(
-                                                    'Important:',
-                                                    style: TextStyle(
-                                                      fontWeight: FontWeight.bold,
-                                                      color: Colors.red,
-                                                    ),
-                                                  ),
-                                                  SizedBox(height: 8),
-                                                  Text('• Verify the food name is correct'),
-                                                  Text('• Check that the description is accurate'),
-                                                  Text('• Make sure all details are precise'),
-                                                ],
-                                              ),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () => Navigator.of(context).pop(),
-                                                  child: const Text('I Will Review'),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                          
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('AI analysis complete!'),
-                                              backgroundColor: Color(0xFF00A74C),
-                                              duration: Duration(seconds: 2),
-                                            ),
-                                          );
-                                        } catch (e) {
-                                          print('Error during AI analysis: $e');
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Failed to analyze image: $e'),
-                                              backgroundColor: Colors.red,
-                                              duration: const Duration(seconds: 3),
-                                            ),
-                                          );
-                                          // Reset analysis state on error
-                                          setDialogState(() {
-                                            _isAnalyzing = false;
-                                          });
-                                        }
-                                      },
-                                icon: const Icon(Icons.auto_awesome),
-                                label: const Text('Let AI Write Description & Title'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF00A74C),
-                                  foregroundColor: Colors.white,
-                                  disabledBackgroundColor: Colors.grey[300],
-                                  disabledForegroundColor: Colors.grey[600],
-                                ),
-                              ),
-                      ),
-                      const SizedBox(height: 16),
                     ],
-                    const Text(
-                      'Photos * (At least 1 required)',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    if (selectedImages.isNotEmpty) ...[
-                      SizedBox(
-                        height: 100,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: selectedImages.length,
-                          itemBuilder: (context, index) {
-                            return Container(
-                              margin: const EdgeInsets.only(right: 8),
-                              child: Stack(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.file(
-                                      selectedImages[index],
-                                      width: 100,
-                                      height: 100,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                  Positioned(
-                                    top: 4,
-                                    right: 4,
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        setDialogState(() {
-                                          selectedImages.removeAt(index);
-                                        });
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Tell us about the food at your location:'),
+                  const SizedBox(height: 16),
+                  
+                  // Scrollable content
+                  Expanded(
+                    child: Scrollbar(
+                      thumbVisibility: true,
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            TextField(
+                              controller: nameController,
+                              onChanged: (value) => foodName = value,
+                              decoration: const InputDecoration(
+                                labelText: 'Food Name *',
+                                hintText: 'e.g., Pizza, Burger, Tacos',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.fastfood),
+                              ),
+                              textCapitalization: TextCapitalization.words,
+                            ),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: descriptionController,
+                              onChanged: (value) => description = value,
+                              decoration: const InputDecoration(
+                                labelText: 'Description *',
+                                hintText: 'Describe the food, price, availability...',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.description),
+                              ),
+                              maxLines: 3,
+                              textCapitalization: TextCapitalization.sentences,
+                            ),
+                            const SizedBox(height: 16),
+                            // AI Analysis Button - Conditional rendering based on analysis state
+                            if (!_aiAnalysisComplete) ...[
+                              SizedBox(
+                                width: double.infinity,
+                                child: _isAnalyzing
+                                    ? Container(
+                                        height: 48,
                                         decoration: BoxDecoration(
-                                          color: Colors.red,
-                                          borderRadius: BorderRadius.circular(12),
+                                          color: Colors.grey[300],
+                                          borderRadius: BorderRadius.circular(8),
                                         ),
-                                        child: const Icon(
-                                          Icons.close,
-                                          size: 16,
-                                          color: Colors.white,
+                                        child: const Center(
+                                          child: SizedBox(
+                                            width: 24,
+                                            height: 24,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00A74C)),
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : ElevatedButton.icon(
+                                        onPressed: selectedImages.isEmpty
+                                            ? null
+                                            : () async {
+                                                if (selectedImages.isEmpty) return;
+                                                
+                                                setDialogState(() {
+                                                  _isAnalyzing = true;
+                                                });
+                                                
+                                                try {
+                                                  print('Starting AI analysis...');
+                                                  final analysis = await _geminiService.analyzeFoodImage(selectedImages[0]);
+                                                  print('Analysis complete: $analysis');
+                                                  
+                                                  if (analysis['name'] == 'Error') {
+                                                    throw Exception(analysis['description']);
+                                                  }
+
+                                                  if (analysis['name'] == 'NO_FOOD_DETECTED') {
+                                                    showDialog(
+                                                      context: context,
+                                                      builder: (context) => AlertDialog(
+                                                        title: const Row(
+                                                          children: [
+                                                            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                                                            SizedBox(width: 8),
+                                                            Text('No Food Detected'),
+                                                          ],
+                                                        ),
+                                                        content: const Text('The AI could not detect any food items in the image. Please try again with a clearer image of food items.'),
+                                                        actions: [
+                                                          TextButton(
+                                                            onPressed: () => Navigator.of(context).pop(),
+                                                            child: const Text('OK'),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    );
+                                                    // Reset the analysis state but don't mark as complete
+                                                    setDialogState(() {
+                                                      _isAnalyzing = false;
+                                                    });
+                                                    return;
+                                                  }
+                                                  
+                                                  nameController.text = analysis['name'] ?? '';
+                                                  descriptionController.text = '${analysis['description']}\n\nCharacteristics: ${analysis['characteristics']}';
+                                                  
+                                                  foodName = nameController.text;
+                                                  description = descriptionController.text;
+                                                  
+                                                  // Mark analysis as complete
+                                                  setDialogState(() {
+                                                    _isAnalyzing = false;
+                                                    _aiAnalysisComplete = true;
+                                                  });
+                                                  
+                                                  // Show warning message about verifying content
+                                                  showDialog(
+                                                    context: context,
+                                                    builder: (context) => AlertDialog(
+                                                      title: const Row(
+                                                        children: [
+                                                          Icon(Icons.check_circle, color: Color(0xFF00A74C)),
+                                                          SizedBox(width: 8),
+                                                          Text('Analysis Complete'),
+                                                        ],
+                                                      ),
+                                                      content: const Column(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                          Text(
+                                                            'The AI has generated a description and title for your food item. Please carefully review and edit the content to ensure it accurately represents your food item.',
+                                                            style: TextStyle(fontSize: 16),
+                                                          ),
+                                                          SizedBox(height: 16),
+                                                          Text(
+                                                            'Important:',
+                                                            style: TextStyle(
+                                                              fontWeight: FontWeight.bold,
+                                                              color: Colors.red,
+                                                            ),
+                                                          ),
+                                                          SizedBox(height: 8),
+                                                          Text('• Verify the food name is correct'),
+                                                          Text('• Check that the description is accurate'),
+                                                          Text('• Make sure all details are precise'),
+                                                        ],
+                                                      ),
+                                                      actions: [
+                                                        TextButton(
+                                                          onPressed: () => Navigator.of(context).pop(),
+                                                          child: const Text('I Will Review'),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  );
+                                                  
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text('AI analysis complete!'),
+                                                      backgroundColor: Color(0xFF00A74C),
+                                                      duration: Duration(seconds: 2),
+                                                    ),
+                                                  );
+                                                } catch (e) {
+                                                  print('Error during AI analysis: $e');
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text('Failed to analyze image: $e'),
+                                                      backgroundColor: Colors.red,
+                                                      duration: const Duration(seconds: 3),
+                                                    ),
+                                                  );
+                                                  // Reset analysis state on error
+                                                  setDialogState(() {
+                                                    _isAnalyzing = false;
+                                                  });
+                                                }
+                                              },
+                                        icon: const Icon(Icons.auto_awesome),
+                                        label: const Text('Let AI Write Description & Title'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFF00A74C),
+                                          foregroundColor: Colors.white,
+                                          disabledBackgroundColor: Colors.grey[300],
+                                          disabledForegroundColor: Colors.grey[600],
                                         ),
                                       ),
-                                    ),
-                                  ),
-                                ],
                               ),
-                            );
-                          },
+                              const SizedBox(height: 16),
+                            ],
+                            const Text(
+                              'Photos * (At least 1 required)',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            if (selectedImages.isNotEmpty) ...[
+                              SizedBox(
+                                height: 100,
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: selectedImages.length,
+                                  itemBuilder: (context, index) {
+                                    return Container(
+                                      margin: const EdgeInsets.only(right: 8),
+                                      child: Stack(
+                                        children: [
+                                          ClipRRect(
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: Image.file(
+                                              selectedImages[index],
+                                              width: 100,
+                                              height: 100,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
+                                          Positioned(
+                                            top: 4,
+                                            right: 4,
+                                            child: GestureDetector(
+                                              onTap: () {
+                                                setDialogState(() {
+                                                  selectedImages.removeAt(index);
+                                                });
+                                              },
+                                              child: Container(
+                                                padding: const EdgeInsets.all(4),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.red,
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                                child: const Icon(
+                                                  Icons.close,
+                                                  size: 16,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final image = await _imagePicker.pickImage(
+                                        source: ImageSource.camera,
+                                        maxWidth: 1024,
+                                        maxHeight: 1024,
+                                        imageQuality: 80,
+                                      );
+                                      if (image != null) {
+                                        setDialogState(() {
+                                          selectedImages.add(File(image.path));
+                                        });
+                                      }
+                                    },
+                                    icon: const Icon(Icons.camera_alt),
+                                    label: const Text('Camera'),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final image = await _imagePicker.pickImage(
+                                        source: ImageSource.gallery,
+                                        maxWidth: 1024,
+                                        maxHeight: 1024,
+                                        imageQuality: 80,
+                                      );
+                                      if (image != null) {
+                                        setDialogState(() {
+                                          selectedImages.add(File(image.path));
+                                        });
+                                      }
+                                    },
+                                    icon: const Icon(Icons.photo_library),
+                                    label: const Text('Gallery'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (selectedImages.isEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  'Please add at least one photo (camera or gallery)',
+                                  style: TextStyle(
+                                    color: Colors.red[600],
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            // Add some extra padding at the bottom for better scrolling
+                            const SizedBox(height: 20),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 8),
-                    ],
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              final image = await _imagePicker.pickImage(
-                                source: ImageSource.camera,
-                                maxWidth: 1024,
-                                maxHeight: 1024,
-                                imageQuality: 80,
-                              );
-                              if (image != null) {
-                                setDialogState(() {
-                                  selectedImages.add(File(image.path));
-                                });
-                              }
-                            },
-                            icon: const Icon(Icons.camera_alt),
-                            label: const Text('Camera'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              final image = await _imagePicker.pickImage(
-                                source: ImageSource.gallery,
-                                maxWidth: 1024,
-                                maxHeight: 1024,
-                                imageQuality: 80,
-                              );
-                              if (image != null) {
-                                setDialogState(() {
-                                  selectedImages.add(File(image.path));
-                                });
-                              }
-                            },
-                            icon: const Icon(Icons.photo_library),
-                            label: const Text('Gallery'),
-                          ),
-                        ),
-                      ],
                     ),
-                    if (selectedImages.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          'Please add at least one photo (camera or gallery)',
-                          style: TextStyle(
-                            color: Colors.red[600],
-                            fontSize: 12,
-                          ),
-                        ),
+                  ),
+                  
+                  // Fixed footer with action buttons
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancel'),
                       ),
-                  ],
-                ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: nameController.text.trim().isNotEmpty &&
+                                 descriptionController.text.trim().isNotEmpty &&
+                                 selectedImages.isNotEmpty
+                            ? () {
+                                Navigator.of(context).pop({
+                                  'name': nameController.text.trim(),
+                                  'description': descriptionController.text.trim(),
+                                  'images': selectedImages,
+                                });
+                              }
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF00A74C),
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Add Marker'),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: nameController.text.trim().isNotEmpty &&
-                         descriptionController.text.trim().isNotEmpty &&
-                         selectedImages.isNotEmpty
-                    ? () {
-                        Navigator.of(context).pop({
-                          'name': nameController.text.trim(),
-                          'description': descriptionController.text.trim(),
-                          'images': selectedImages,
-                        });
-                      }
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00A74C),
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Add Marker'),
-              ),
-            ],
           );
         },
       );
@@ -702,20 +760,31 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
 }
 
   Future<void> _onMarkerTapped(String markerId, Map<String, dynamic> markerData) async {
+    print('DEBUG: _onMarkerTapped called with markerId: $markerId');
+    print('DEBUG: markerData: $markerData');
     await _showMarkerDetailsDialog(markerId, markerData);
   }
 
   Future<void> _showMarkerDetailsDialog(String markerId, Map<String, dynamic> markerData) async {
+    print('DEBUG: _showMarkerDetailsDialog called with markerId: $markerId');
+    print('DEBUG: Full markerData in dialog: $markerData');
     final isMyMarker = markerData['addedBy'] == _currentUserId;
     final addedByName = markerData['addedByName'] ?? 'Unknown User';
     final addedById = markerData['addedBy'] ?? '';
     final base64Images = List<String>.from(markerData['images'] ?? []);
+    print('DEBUG: base64Images length: ${base64Images.length}');
+    print('DEBUG: Description: ${markerData['description']}');
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(32),
+          ),
           child: Container(
-            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
+            width: double.infinity,
+            height: MediaQuery.of(context).size.height * 0.92,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -724,137 +793,135 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                   decoration: const BoxDecoration(
                     color: Color(0xFFE6F8EE),
                     borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(4),
-                      topRight: Radius.circular(4),
+                      topLeft: Radius.circular(32),
+                      topRight: Radius.circular(32),
                     ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.restaurant, color: Color(0xFF00A74C), size: 24),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  markerData['name'] ?? 'Unknown Food',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  'Added by ${isMyMarker ? "you" : addedByName}',
-                                  style: TextStyle(
-                                    color: Colors.grey[600],
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.close),
-                          ),
-                        ],
-                      ),
-                      if (!isMyMarker) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.orange[50],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.orange[200]!),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.location_on, color: Colors.orange[700], size: 20),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'This location is approximate for privacy',
-                                  style: TextStyle(
-                                    color: Colors.orange[900],
-                                    fontSize: 12,
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                ),
+                      const Icon(Icons.restaurant, color: Color(0xFF00A74C), size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              markerData['name'] ?? 'Unknown Food',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
                               ),
-                            ],
-                          ),
+                            ),
+                            Text(
+                              'Added by ${isMyMarker ? "you" : addedByName}',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close, size: 20),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
                     ],
                   ),
                 ),
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (markerData['description'] != null && markerData['description'].isNotEmpty) ...[
-                          const Text(
-                            'Description',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(markerData['description']),
-                          const SizedBox(height: 16),
-                        ],
-                        if (base64Images.isNotEmpty) ...[
-                          const Text(
-                            'Photos',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            height: 150,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: base64Images.length,
-                              itemBuilder: (context, index) {
-                                return Container(
-                                  margin: const EdgeInsets.only(right: 8),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: _buildBase64Image(base64Images[index]),
+                  child: Scrollbar(
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (!isMyMarker) ...[
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.orange[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.orange[200]!),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.location_on, color: Colors.orange[700], size: 16),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'This location is approximate for privacy',
+                                      style: TextStyle(
+                                        color: Colors.orange[900],
+                                        fontSize: 12,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
                                   ),
-                                );
-                              },
+                                ],
+                              ),
                             ),
-                          ),
-                        ] else ...[
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(8),
+                            const SizedBox(height: 16),
+                          ],
+                          if (markerData['description'] != null && markerData['description'].isNotEmpty) ...[
+                            const Text(
+                              'Description',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.image_not_supported, color: Colors.grey[400]),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'No photos available',
-                                  style: TextStyle(color: Colors.grey[600]),
-                                ),
-                              ],
+                            const SizedBox(height: 8),
+                            Text(markerData['description']),
+                            const SizedBox(height: 16),
+                          ],
+                          if (base64Images.isNotEmpty) ...[
+                            const Text(
+                              'Photos',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
-                          ),
-                        ],
-                        if (!isMyMarker) ...[
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              height: 150,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: base64Images.length,
+                                itemBuilder: (context, index) {
+                                  return Container(
+                                    margin: const EdgeInsets.only(right: 8),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: _buildBase64Image(base64Images[index]),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ] else ...[
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[100],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.image_not_supported, color: Colors.grey[400]),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'No photos available',
+                                    style: TextStyle(color: Colors.grey[600]),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 24),
                           const Divider(),
                           const SizedBox(height: 16),
@@ -869,14 +936,22 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                           ReviewWidget(
                             targetUserId: addedById,
                             targetUserName: addedByName,
+                            showReviewButton: !isMyMarker,
                           ),
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
                 Container(
                   padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(32),
+                      bottomRight: Radius.circular(32),
+                    ),
+                  ),
                   child: Column(
                     children: [
                       if (!isMyMarker && addedById.isNotEmpty) ...[
@@ -908,6 +983,10 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                           Expanded(
                             child: OutlinedButton(
                               onPressed: () => Navigator.of(context).pop(),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                textStyle: const TextStyle(fontSize: 14),
+                              ),
                               child: const Text('Close'),
                             ),
                           ),
@@ -927,10 +1006,11 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                                   }
                                 },
                                 icon: const Icon(Icons.delete, size: 18),
-                                label: const Text('Delete'),
+                                label: const Text('Delete', style: TextStyle(fontSize: 14)),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.red,
                                   foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
                                 ),
                               ),
                             ),
@@ -1088,20 +1168,21 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
   }
 
   Future<void> _deleteMarker(String markerId, String markerName) async {
-    setState(() {
-      _markers.removeWhere((marker) => marker.markerId.value == markerId);
-    });
-    if (_firebaseConnected && _foodMarkersRef != null) {
-      try {
-        await _foodMarkersRef!.child(markerId).remove();
-        _showSnackBar('Marker "$markerName" deleted successfully', const Color(0xFF00A74C));
-      } catch (e) {
-        _showSnackBar('Failed to delete from server: $e', Colors.red);
-      }
-    } else {
-      _showSnackBar('Marker "$markerName" deleted locally', Colors.orange);
+  setState(() {
+    _markers.removeWhere((marker) => marker.markerId.value == markerId);
+    _markerDataCache.remove(markerId); // Remove from cache
+  });
+  if (_firebaseConnected && _foodMarkersRef != null) {
+    try {
+      await _foodMarkersRef!.child(markerId).remove();
+      _showSnackBar('Marker "$markerName" deleted successfully', const Color(0xFF00A74C));
+    } catch (e) {
+      _showSnackBar('Failed to delete from server: $e', Colors.red);
     }
+  } else {
+    _showSnackBar('Marker "$markerName" deleted locally', Colors.orange);
   }
+}
 
   Future<void> _centerOnCurrentLocation() async {
     if (_currentLocation != null && _mapController != null) {
@@ -1110,7 +1191,7 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
   }
 
   Future<void> _animateToLocation(LocationData location) async {
-    if (_mapController != null) {
+    if (_mapController != null && location.latitude != null && location.longitude != null) {
       await _mapController!.animateCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(
@@ -1119,6 +1200,24 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
           ),
         ),
       );
+      setState(() {
+        _isCenteredOnUser = true;
+      });
+    }
+  }
+
+  void _onCameraMove(CameraPosition position) {
+    if (_currentLocation != null) {
+      final distance = _calculateDistance(
+        position.target.latitude,
+        position.target.longitude,
+        _currentLocation!.latitude!,
+        _currentLocation!.longitude!,
+      );
+      // If we're more than 100 meters away from user location, show the button
+      setState(() {
+        _isCenteredOnUser = distance < 0.1; // 0.1 km = 100 meters
+      });
     }
   }
 
@@ -1417,76 +1516,78 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
         return StatefulBuilder(
           builder: (context, setState) {
             // Filter and sort markers
-            final filteredMarkers = _markers.where((marker) {
-              final markerData = _getMarkerData(marker.markerId.value);
-              if (markerData == null) return false;
-              
-              // Calculate distance
-              final distanceKm = _calculateDistance(
-                _currentLocation?.latitude ?? 0,
-                _currentLocation?.longitude ?? 0,
-                markerData['location']['latitude'] ?? 0,
-                markerData['location']['longitude'] ?? 0,
-              );
-              final distance = _useMiles ? distanceKm * 0.621371 : distanceKm;
-              
-              // Check if within radius
-              if (distance > _radius) return false;
-              
-              // Apply search filter
-              if (_searchQuery.isEmpty) return true;
-              
-              final name = (markerData['name'] ?? '').toLowerCase();
-              final description = (markerData['description'] ?? '').toLowerCase();
-              final addedBy = (markerData['addedByName'] ?? '').toLowerCase();
-              final query = _searchQuery.toLowerCase();
-              
-              return name.contains(query) || 
-                     description.contains(query) || 
-                     addedBy.contains(query);
-            }).toList();
+            // In _showListView(), replace the filteredMarkers logic with this:
+final filteredMarkers = _markers.where((marker) {
+  final markerId = marker.markerId.value;
+  final markerData = _markerDataCache[markerId];
+  if (markerData == null) return false;
+  
+  // Calculate distance
+  final distanceKm = _calculateDistance(
+    _currentLocation?.latitude ?? 0,
+    _currentLocation?.longitude ?? 0,
+    markerData['location']['latitude'] ?? 0,
+    markerData['location']['longitude'] ?? 0,
+  );
+  final distance = _useMiles ? distanceKm * 0.621371 : distanceKm;
+  
+  // Check if within radius
+  if (distance > _radius) return false;
+  
+  // Apply search filter
+  if (_searchQuery.isEmpty) return true;
+  
+  final name = (markerData['name'] ?? '').toLowerCase();
+  final description = (markerData['description'] ?? '').toLowerCase();
+  final addedBy = (markerData['addedByName'] ?? '').toLowerCase();
+  final query = _searchQuery.toLowerCase();
+  
+  return name.contains(query) || 
+         description.contains(query) || 
+         addedBy.contains(query);
+}).toList();
 
-            // Sort markers
-            filteredMarkers.sort((a, b) {
-              final aData = _getMarkerData(a.markerId.value);
-              final bData = _getMarkerData(b.markerId.value);
-              if (aData == null || bData == null) return 0;
+// Sort markers
+filteredMarkers.sort((a, b) {
+  final aData = _markerDataCache[a.markerId.value];
+  final bData = _markerDataCache[b.markerId.value];
+  if (aData == null || bData == null) return 0;
 
-              switch (_sortBy) {
-                case 'distance':
-                  final aDistance = _calculateDistance(
-                    _currentLocation?.latitude ?? 0,
-                    _currentLocation?.longitude ?? 0,
-                    aData['location']['latitude'] ?? 0,
-                    aData['location']['longitude'] ?? 0,
-                  );
-                  final bDistance = _calculateDistance(
-                    _currentLocation?.latitude ?? 0,
-                    _currentLocation?.longitude ?? 0,
-                    bData['location']['latitude'] ?? 0,
-                    bData['location']['longitude'] ?? 0,
-                  );
-                  return aDistance.compareTo(bDistance);
-                
-                case 'recent':
-                  final aTimestamp = aData['timestamp'] ?? 0;
-                  final bTimestamp = bData['timestamp'] ?? 0;
-                  return bTimestamp.compareTo(aTimestamp);
-                
-                case 'name':
-                  final aName = (aData['name'] ?? '').toLowerCase();
-                  final bName = (bData['name'] ?? '').toLowerCase();
-                  return aName.compareTo(bName);
-                
-                case 'rating':
-                  // For rating sorting, we'll use a placeholder value
-                  // The actual sorting will be handled by the FutureBuilder
-                  return 0;
-                
-                default:
-                  return 0;
-              }
-            });
+  switch (_sortBy) {
+    case 'distance':
+      final aDistance = _calculateDistance(
+        _currentLocation?.latitude ?? 0,
+        _currentLocation?.longitude ?? 0,
+        aData['location']['latitude'] ?? 0,
+        aData['location']['longitude'] ?? 0,
+      );
+      final bDistance = _calculateDistance(
+        _currentLocation?.latitude ?? 0,
+        _currentLocation?.longitude ?? 0,
+        bData['location']['latitude'] ?? 0,
+        bData['location']['longitude'] ?? 0,
+      );
+      return aDistance.compareTo(bDistance);
+    
+    case 'recent':
+      final aTimestamp = aData['timestamp'] ?? 0;
+      final bTimestamp = bData['timestamp'] ?? 0;
+      return bTimestamp.compareTo(aTimestamp);
+    
+    case 'name':
+      final aName = (aData['name'] ?? '').toLowerCase();
+      final bName = (bData['name'] ?? '').toLowerCase();
+      return aName.compareTo(bName);
+    
+    case 'rating':
+      // For rating sorting, we'll use a placeholder value
+      // The actual sorting will be handled by the FutureBuilder
+      return 0;
+    
+    default:
+      return 0;
+  }
+});
 
             // If sorting by rating, we need to fetch the ratings first
             if (_sortBy == 'rating') {
@@ -1525,61 +1626,87 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                 children: [
                   Container(
                     padding: const EdgeInsets.all(16),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black12,
-                          blurRadius: 4,
-                          offset: Offset(0, -2),
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, -2),
                         ),
                       ],
                     ),
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              'Food Listings',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF00A74C),
+                            Expanded(
+                              child: Text(
+                                'Food Locations',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            Row(
-                              children: [
-                                Text(
-                                  'km',
-                                  style: TextStyle(
-                                    color: !_useMiles ? const Color(0xFF00A74C) : Colors.grey,
-                                    fontWeight: !_useMiles ? FontWeight.bold : FontWeight.normal,
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surfaceVariant,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  TextButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _useMiles = true;
+                                      });
+                                    },
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: Text(
+                                      'mi',
+                                      style: TextStyle(
+                                        color: _useMiles ? const Color(0xFF00A74C) : Colors.grey[600],
+                                        fontWeight: _useMiles ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                                Switch(
-                                  value: _useMiles,
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _updateRadiusForUnitChange(value);
-                                      _useMiles = value;
-                                    });
-                                  },
-                                  activeColor: const Color(0xFF00A74C),
-                                ),
-                                Text(
-                                  'mi',
-                                  style: TextStyle(
-                                    color: _useMiles ? const Color(0xFF00A74C) : Colors.grey,
-                                    fontWeight: _useMiles ? FontWeight.bold : FontWeight.normal,
+                                  Text(
+                                    '|',
+                                    style: TextStyle(color: Colors.grey[400]),
                                   ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.close),
-                                  onPressed: () => Navigator.pop(context),
-                                ),
-                              ],
+                                  TextButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _useMiles = false;
+                                      });
+                                    },
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: Text(
+                                      'km',
+                                      style: TextStyle(
+                                        color: !_useMiles ? const Color(0xFF00A74C) : Colors.grey[600],
+                                        fontWeight: !_useMiles ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -1653,27 +1780,35 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                             Expanded(
                               child: DropdownButtonFormField<String>(
                                 value: _sortBy,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: 'Sort by',
-                                  border: OutlineInputBorder(),
-                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  border: const OutlineInputBorder(
+                                    borderRadius: BorderRadius.zero,
+                                    borderSide: BorderSide(color: Colors.grey),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                                  isDense: false,
                                 ),
+                                isExpanded: true,
+                                icon: Icon(Icons.arrow_drop_down, color: const Color(0xFF00A74C)),
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14),
+                                dropdownColor: Theme.of(context).colorScheme.surface,
                                 items: const [
                                   DropdownMenuItem(
                                     value: 'distance',
-                                    child: Text('Distance'),
+                                    child: Text('Distance', style: TextStyle(color: Colors.white)),
                                   ),
                                   DropdownMenuItem(
                                     value: 'recent',
-                                    child: Text('Most Recent'),
+                                    child: Text('Most Recent', style: TextStyle(color: Colors.white)),
                                   ),
                                   DropdownMenuItem(
                                     value: 'name',
-                                    child: Text('Name'),
+                                    child: Text('Name', style: TextStyle(color: Colors.white)),
                                   ),
                                   DropdownMenuItem(
                                     value: 'rating',
-                                    child: Text('Rating'),
+                                    child: Text('Rating', style: TextStyle(color: Colors.white)),
                                   ),
                                 ],
                                 onChanged: (value) {
@@ -1691,8 +1826,11 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                                 decoration: const InputDecoration(
                                   labelText: 'Search',
                                   prefixIcon: Icon(Icons.search),
-                                  border: OutlineInputBorder(),
-                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.zero,
+                                    borderSide: BorderSide(color: Colors.grey),
+                                  ),
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                                 ),
                                 onChanged: (value) {
                                   setState(() {
@@ -1739,200 +1877,184 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                       : ListView.builder(
                           padding: const EdgeInsets.all(16),
                           itemCount: filteredMarkers.length,
-                          itemBuilder: (context, index) {
-                            final marker = filteredMarkers[index];
-                            final baseData = _getMarkerData(marker.markerId.value);
-                            if (baseData == null) return const SizedBox.shrink();
+                          // In your _showListView() method, replace the ListView.builder itemBuilder with this:
+itemBuilder: (context, index) {
+  final marker = filteredMarkers[index];
+  final markerId = marker.markerId.value;
+  
+  return FutureBuilder<Map<String, dynamic>?>(
+    future: _getFullMarkerData(markerId),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Card(
+          margin: EdgeInsets.only(bottom: 12),
+          child: Padding(
+            padding: EdgeInsets.all(12),
+            child: Row(
+              children: [
+                CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00A74C)),
+                ),
+                SizedBox(width: 16),
+                Text('Loading marker data...'),
+              ],
+            ),
+          ),
+        );
+      }
 
-                            return FutureBuilder<Map<String, dynamic>?>(
-                              future: _getFullMarkerData(marker.markerId.value),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState == ConnectionState.waiting) {
-                                  return const Card(
-                                    margin: EdgeInsets.only(bottom: 12),
-                                    child: Padding(
-                                      padding: EdgeInsets.all(12),
-                                      child: Row(
-                                        children: [
-                                          CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00A74C)),
-                                          ),
-                                          SizedBox(width: 16),
-                                          Text('Loading marker data...'),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }
+      final markerData = snapshot.data;
+      if (markerData == null) {
+        return const SizedBox.shrink();
+      }
 
-                                final markerData = snapshot.data ?? baseData;
-                                final distanceKm = _calculateDistance(
-                                  _currentLocation?.latitude ?? 0,
-                                  _currentLocation?.longitude ?? 0,
-                                  markerData['location']['latitude'] ?? 0,
-                                  markerData['location']['longitude'] ?? 0,
-                                );
-                                final distance = _useMiles ? distanceKm * 0.621371 : distanceKm;
-                                final unit = _useMiles ? 'mi' : 'km';
-                                final isMyMarker = markerData['addedBy'] == _currentUserId;
+      final distanceKm = _calculateDistance(
+        _currentLocation?.latitude ?? 0,
+        _currentLocation?.longitude ?? 0,
+        markerData['location']['latitude'] ?? 0,
+        markerData['location']['longitude'] ?? 0,
+      );
+      final distance = _useMiles ? distanceKm * 0.621371 : distanceKm;
+      final unit = _useMiles ? 'mi' : 'km';
+      final isMyMarker = markerData['addedBy'] == _currentUserId;
 
-                                return Card(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: InkWell(
-                                    onTap: () {
-                                      Navigator.pop(context);
-                                      _onMarkerTapped(marker.markerId.value, markerData);
-                                    },
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(12),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              const Icon(
-                                                Icons.restaurant,
-                                                color: Color(0xFF00A74C),
-                                                size: 20,
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: Text(
-                                                  markerData['name'] ?? 'Unknown Food',
-                                                  style: const TextStyle(
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(
-                                                  horizontal: 8,
-                                                  vertical: 4,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0xFF00A74C).withOpacity(0.1),
-                                                  borderRadius: BorderRadius.circular(12),
-                                                ),
-                                                child: Text(
-                                                  '${distance.toStringAsFixed(1)} $unit',
-                                                  style: const TextStyle(
-                                                    color: Color(0xFF00A74C),
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          if (markerData['description'] != null && markerData['description'].isNotEmpty) ...[
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              markerData['description'],
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                color: Colors.grey[600],
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                          ],
-                                          const SizedBox(height: 8),
-                                          Row(
-                                            children: [
-                                              Icon(
-                                                Icons.person,
-                                                size: 16,
-                                                color: Colors.grey[600],
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                markerData['addedByName'] ?? 'Unknown User',
-                                                style: TextStyle(
-                                                  color: Colors.grey[600],
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                              const Spacer(),
-                                              if (markerData['addedBy'] != null)
-                                                FutureBuilder<double>(
-                                                  future: _reviewService.getUserTrustScore(markerData['addedBy']),
-                                                  builder: (context, snapshot) {
-                                                    if (snapshot.connectionState == ConnectionState.waiting) {
-                                                      return const SizedBox(
-                                                        width: 20,
-                                                        height: 20,
-                                                        child: CircularProgressIndicator(
-                                                          strokeWidth: 2,
-                                                        ),
-                                                      );
-                                                    }
-                                                    final rating = snapshot.data ?? 0.0;
-                                                    return Row(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: [
-                                                        const Icon(
-                                                          Icons.star,
-                                                          color: Colors.amber,
-                                                          size: 20,
-                                                        ),
-                                                        const SizedBox(width: 4),
-                                                        Text(
-                                                          '${rating.toStringAsFixed(1)} ⭐',
-                                                          style: TextStyle(
-                                                            color: Colors.grey[700],
-                                                            fontWeight: FontWeight.w500,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    );
-                                                  },
-                                                ),
-                                              const SizedBox(width: 8),
-                                              if (isMyMarker)
-                                                IconButton(
-                                                  icon: const Icon(
-                                                    Icons.delete_outline,
-                                                    color: Colors.red,
-                                                    size: 20,
-                                                  ),
-                                                  onPressed: () async {
-                                                    final shouldDelete = await _showDeleteConfirmationDialog(
-                                                      markerData['name'] ?? 'Unknown Food',
-                                                      markerData['addedByName'] ?? 'Unknown User',
-                                                      true
-                                                    );
-                                                    if (shouldDelete == true) {
-                                                      await _deleteMarker(marker.markerId.value, markerData['name'] ?? 'Unknown Food');
-                                                      Navigator.pop(context);
-                                                    }
-                                                  },
-                                                  tooltip: 'Delete',
-                                                ),
-                                              if (markerData['images'] != null &&
-                                                  (markerData['images'] as List).isNotEmpty)
-                                                Text(
-                                                  '${(markerData['images'] as List).length} photos',
-                                                  style: TextStyle(
-                                                    color: Colors.grey[600],
-                                                    fontSize: 12,
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
+      return Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: InkWell(
+          onTap: () {
+            Navigator.pop(context);
+            print('DEBUG: ListView onTap passing markerData: ${markerData}');
+            _onMarkerTapped(markerId, markerData);
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.restaurant,
+                      color: Color(0xFF00A74C),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        markerData['name'] ?? 'Unknown Food',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00A74C).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${distance.toStringAsFixed(1)} $unit',
+                        style: const TextStyle(
+                          color: Color(0xFF00A74C),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (markerData['description'] != null && markerData['description'].isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    markerData['description'],
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.person,
+                      size: 16,
+                      color: Colors.grey[600],
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      markerData['addedByName'] ?? 'Unknown User',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (markerData['addedBy'] != null)
+                      FutureBuilder<double>(
+                        future: _reviewService.getUserTrustScore(markerData['addedBy']),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
                             );
-                          },
+                          }
+                          final rating = snapshot.data ?? 0.0;
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${rating.toStringAsFixed(1)}',
+                                style: TextStyle(
+                                  color: Colors.grey[700],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(
+                                Icons.star,
+                                color: Colors.amber,
+                                size: 20,
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    if (markerData['images'] != null &&
+                        (markerData['images'] as List).isNotEmpty)
+                      Text(
+                        '${(markerData['images'] as List).length} photos',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+},
                         ),
                   ),
                 ],
@@ -1945,49 +2067,42 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
   }
 
   Map<String, dynamic>? _getMarkerData(String markerId) {
-    if (!_firebaseConnected || _foodMarkersRef == null) return null;
-    try {
-      final marker = _markers.firstWhere(
-        (marker) => marker.markerId.value == markerId,
-      );
-      return {
-        'name': marker.infoWindow.title,
-        'description': marker.infoWindow.snippet?.split('•')[1].trim(),
-        'location': {
-          'latitude': marker.position.latitude,
-          'longitude': marker.position.longitude,
-        },
-        'addedByName': marker.infoWindow.snippet?.split('•')[0].replaceAll('Added by ', '').trim(),
-        'markerId': markerId,
-      };
-    } catch (e) {
-      return null;
-    }
-  }
+  // Simply return the cached data if available
+  return _markerDataCache[markerId];
+}
 
   Future<Map<String, dynamic>?> _getFullMarkerData(String markerId) async {
-    if (!_firebaseConnected || _foodMarkersRef == null) return null;
-    try {
-      final snapshot = await _foodMarkersRef!.child(markerId).get();
-      if (snapshot.exists) {
-        final data = snapshot.value as Map<dynamic, dynamic>;
-        final baseData = _getMarkerData(markerId);
-        if (baseData != null) {
-          return {
-            ...baseData,
-            'images': data['images'] ?? [],
-            'addedBy': data['addedBy'] ?? '',
-            'description': data['description'] ?? '',
-            'timestamp': data['timestamp'] ?? 0,
-          };
-        }
-      }
-      return null;
-    } catch (e) {
-      print('Error getting full marker data: $e');
-      return null;
-    }
+  // First check the cache
+  if (_markerDataCache.containsKey(markerId)) {
+    return _markerDataCache[markerId];
   }
+  
+  // If not in cache, fetch from Firebase
+  if (!_firebaseConnected || _foodMarkersRef == null) {
+    print('DEBUG: Cannot get full marker data - Firebase not connected or reference is null');
+    return null;
+  }
+  
+  try {
+    print('DEBUG: Fetching full marker data for markerId: $markerId');
+    final snapshot = await _foodMarkersRef!.child(markerId).get();
+    print('DEBUG: Snapshot exists: ${snapshot.exists}');
+    
+    if (snapshot.exists) {
+      final data = Map<String, dynamic>.from(snapshot.value as Map);
+      print('DEBUG: Full data from Firebase: $data');
+      
+      // Store in cache for future use
+      _markerDataCache[markerId] = data;
+      
+      return data;
+    }
+    return null;
+  } catch (e) {
+    print('DEBUG: Error getting full marker data: $e');
+    return null;
+  }
+}
 
   double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
     const double earthRadius = 6371; // km
@@ -2013,15 +2128,19 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
         break;
       case 1:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const EcoChallengesScreen(),
+          TabPageTransition(
+            page: const EcoChallengesScreen(),
+            fromIndex: _currentIndex,
+            toIndex: index,
           ),
         );
         break;
       case 2:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const PollutionTrackerScreen(),
+          TabPageTransition(
+            page: const PollutionTrackerScreen(),
+            fromIndex: _currentIndex,
+            toIndex: index,
           ),
         );
         break;
@@ -2093,24 +2212,12 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.black,
         elevation: 2,
-        title: const Row(
-          children: [
-            Icon(Icons.restaurant_menu, color: Color(0xFF00A74C)),
-            SizedBox(width: 8),
-            Text(
-              'Food Locator',
-              style: TextStyle(
-                color: Color(0xFF00A74C),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
+        title: Icon(Icons.restaurant_menu, color: const Color(0xFF00A74C)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.list, color: Color(0xFF00A74C)),
+            icon: Icon(Icons.list, color: const Color(0xFF00A74C)),
             onPressed: _showListView,
             tooltip: 'List View',
           ),
@@ -2290,22 +2397,33 @@ class _FoodLocatorScreenState extends State<FoodLocatorScreen> {
                   compassEnabled: true,
                   mapType: MapType.normal,
                   zoomControlsEnabled: false,
+                  onCameraMove: _onCameraMove,
                 ),
+                if (!_isCenteredOnUser)
+                  Positioned(
+                    left: 20,
+                    bottom: 20,
+                    child: FloatingActionButton(
+                      onPressed: () {
+                        if (_currentLocation != null) {
+                          _animateToLocation(_currentLocation!);
+                        }
+                      },
+                      backgroundColor: Colors.white,
+                      child: Icon(Icons.my_location, color: Colors.green[600]),
+                      heroTag: "center_location",
+                    ),
+                  ),
                 Positioned(
                   bottom: 20,
                   right: 20,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      FloatingActionButton.extended(
-                        onPressed: _addFoodMarker,
-                        icon: const Icon(Icons.restaurant),
-                        label: const Text('Add Food', style: TextStyle(color: Colors.white)),
-                        backgroundColor: const Color(0xFF00A74C),
-                        foregroundColor: Colors.white,
-                        heroTag: "add_food",
-                      ),
-                    ],
+                  child: FloatingActionButton.extended(
+                    onPressed: _addFoodMarker,
+                    icon: const Icon(Icons.add_location_alt),
+                    label: const Text('Add Food', style: TextStyle(color: Colors.white)),
+                    backgroundColor: const Color(0xFF00A74C),
+                    foregroundColor: Colors.white,
+                    heroTag: "add_food",
                   ),
                 ),
               ],

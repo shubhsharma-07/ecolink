@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io' show Platform;
 import 'screens/login_screen.dart';
 import 'screens/food_locator.dart';
+import 'screens/splash_screen.dart';
 import 'services/auth_service.dart';
 import 'firebase_options.dart';
 
@@ -11,20 +12,6 @@ import 'firebase_options.dart';
 /// Initializes Firebase and runs the main app
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    print('Initializing Firebase...');
-    if (Platform.isIOS) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    } else {
-      await Firebase.initializeApp();
-    }
-    print('Firebase initialized successfully');
-  } catch (e, stackTrace) {
-    print('Failed to initialize Firebase: $e');
-    print('Stack trace: $stackTrace');
-  }
   runApp(const MyApp());
 }
 
@@ -40,8 +27,15 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
+        brightness: Brightness.light,
       ),
-      home: AuthWrapper(),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
+      themeMode: ThemeMode.system,
+      home: const SplashScreenWrapper(),
       routes: {
         '/login': (context) => const LoginScreen(),
         '/food_locator': (context) => const FoodLocatorScreen(),
@@ -50,79 +44,78 @@ class MyApp extends StatelessWidget {
   }
 }
 
+class SplashScreenWrapper extends StatefulWidget {
+  const SplashScreenWrapper({super.key});
+
+  @override
+  State<SplashScreenWrapper> createState() => _SplashScreenWrapperState();
+}
+
+class _SplashScreenWrapperState extends State<SplashScreenWrapper> {
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    try {
+      if (Platform.isIOS) {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+      } else {
+        await Firebase.initializeApp();
+      }
+      
+      // Add a small delay to ensure smooth transition
+      await Future.delayed(const Duration(seconds: 2));
+      
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    } catch (e, stackTrace) {
+      print('Failed to initialize Firebase: $e');
+      print('Stack trace: $stackTrace');
+      // Even if Firebase fails, we should still proceed to the app
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return const SplashScreen();
+    }
+    return const AuthWrapper();
+  }
+}
+
 /// Handles authentication state and routing
 /// Shows loading screen while checking auth state
 /// Routes to appropriate screen based on user authentication status
 class AuthWrapper extends StatelessWidget {
-  final AuthService _authService = AuthService();
-
-  AuthWrapper({super.key});
+  const AuthWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final AuthService _authService = AuthService();
+    
     return StreamBuilder<User?>(
       stream: _authService.authStateChanges,
       builder: (context, snapshot) {
-        // Display loading screen with gradient background and app logo
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(
-            body: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.blue[400]!,
-                    Colors.blue[600]!,
-                    Colors.blue[800]!,
-                  ],
-                ),
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(50),
-                      ),
-                      child: Icon(
-                        Icons.restaurant,
-                        size: 60,
-                        color: Colors.orange[700],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Food Locator',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const CircularProgressIndicator(
-                      color: Colors.white,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Loading...',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
+          return const SplashScreen();
         }
 
-        // Route to FoodLocatorScreen if user is authenticated, otherwise show LoginScreen
         if (snapshot.hasData) {
           return const FoodLocatorScreen();
         } else {

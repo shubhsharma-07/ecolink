@@ -105,93 +105,32 @@ class ReviewService {
 
       // Save the review
       await _database.child('userReviews').child(reviewId).set(reviewData);
-
-      // Update trust score - handle any errors here without throwing
-      try {
-        await _updateTrustScore(reviewedId);
-      } catch (e) {
-        print('Warning: Failed to update trust score: $e');
-        // Don't throw the error, as the review was successfully saved
-      }
     } catch (e) {
       print('Error submitting review: $e');
       rethrow;
     }
   }
 
-  // Update trust score for a user
-  Future<void> _updateTrustScore(String userId) async {
+  // Get average rating from reviews
+  Future<double> getAverageRating(String userId) async {
     try {
-      // Get all reviews for the user
-      final reviewsSnapshot = await _database
-          .child('userReviews')
-          .orderByChild('reviewedId')
-          .equalTo(userId)
-          .get();
+      final reviews = await getUserReviews(userId);
+      if (reviews.isEmpty) return 0.0;
 
-      if (!reviewsSnapshot.exists) {
-        // If no reviews exist, set to 0 with timestamp
-        await _database.child('userTrustScores').child(userId).set({
-          'score': 0.0,
-          'lastUpdated': ServerValue.timestamp
-        });
-        return;
-      }
-
-      final reviews = reviewsSnapshot.value as Map<dynamic, dynamic>;
       double totalRating = 0;
-      int reviewCount = 0;
-
-      reviews.forEach((key, value) {
-        if (value['rating'] != null) {
-          totalRating += (value['rating'] as num).toDouble();
-          reviewCount++;
-        }
-      });
-
-      final averageRating = reviewCount > 0 ? totalRating / reviewCount : 0.0;
-      
-      // First update the user's own trust score
-      await _database.child('userTrustScores').child(userId).set({
-        'score': averageRating,
-        'lastUpdated': ServerValue.timestamp
-      });
-
-      // Then update the reviewer's trust score if they don't have one
-      final reviewerScoreSnapshot = await _database
-          .child('userTrustScores')
-          .child(currentUserId)
-          .get();
-
-      if (!reviewerScoreSnapshot.exists) {
-        await _database.child('userTrustScores').child(currentUserId).set({
-          'score': 0.0,
-          'lastUpdated': ServerValue.timestamp
-        });
+      for (var review in reviews) {
+        totalRating += (review['rating'] as num).toDouble();
       }
+      return totalRating / reviews.length;
     } catch (e) {
-      print('Error updating trust score: $e');
-      // Don't throw the error, just log it
-      // The review was already saved successfully
+      print('Error calculating average rating: $e');
+      return 0.0;
     }
   }
 
   // Get user's trust score
   Future<double> getUserTrustScore(String userId) async {
-    try {
-      final trustScoreSnapshot = await _database
-          .child('userTrustScores')
-          .child(userId)
-          .get();
-
-      if (!trustScoreSnapshot.exists) return 0.0;
-
-      final trustScoreData = trustScoreSnapshot.value as Map<dynamic, dynamic>;
-      return (trustScoreData['score'] as num).toDouble();
-    } catch (e) {
-      print('Error getting trust score: $e');
-      return 0.0;
-    }
+    return getAverageRating(userId);
   }
 
   // Get all reviews for a user
@@ -240,12 +179,33 @@ class ReviewService {
         throw Exception('You can only delete your own reviews');
       }
 
-      final reviewedId = reviewData['reviewedId'];
       await _database.child('userReviews').child(reviewId).remove();
-      await _updateTrustScore(reviewedId);
     } catch (e) {
       print('Error deleting review: $e');
       rethrow;
+    }
+  }
+
+  // Returns true if the current user has already reviewed the target user
+  Future<bool> hasReviewed(String targetUserId) async {
+    try {
+      final existingReviewsSnapshot = await _database
+          .child('userReviews')
+          .orderByChild('reviewerId')
+          .equalTo(currentUserId)
+          .get();
+
+      if (existingReviewsSnapshot.exists) {
+        final reviews = existingReviewsSnapshot.value as Map<dynamic, dynamic>;
+        final hasExistingReview = reviews.values.any((review) =>
+          review['reviewedId'] == targetUserId
+        );
+        return hasExistingReview;
+      }
+      return false;
+    } catch (e) {
+      print('Error checking if already reviewed: $e');
+      return false;
     }
   }
 } 

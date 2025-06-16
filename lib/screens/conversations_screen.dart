@@ -233,7 +233,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                       lastMessage,
                       style: TextStyle(
                         fontWeight: unreadCount > 0 ? FontWeight.w500 : FontWeight.normal,
-                        color: unreadCount > 0 ? Colors.black87 : Colors.grey[700],
+                        color: Colors.white,
                         fontSize: 14,
                       ),
                       maxLines: 1,
@@ -315,85 +315,104 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Row(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(Icons.delete_forever, color: Colors.red),
-            SizedBox(width: 8),
-            Text('Delete Conversation'),
+            const Icon(Icons.delete_forever, color: Colors.red),
+            const SizedBox(height: 8),
+            Text(
+              'Delete Conversation',
+              style: Theme.of(context).textTheme.titleLarge,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+            ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Are you sure you want to permanently delete this conversation?',
-              style: TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey[300]!),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Are you sure you want to delete this conversation from your account? The other user will still have access until they delete it as well.',
+                style: TextStyle(fontSize: 16),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.person, color: Colors.grey[600], size: 16),
-                      const SizedBox(width: 8),
-                      Text(
-                        'With: ${conversation['otherUserName']}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(Icons.restaurant, color: Color(0xFF00A74C), size: 16),
-                      const SizedBox(width: 8),
-                      Text(
-                        'About: ${conversation['foodName']}',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                ],
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.person, color: Colors.grey[600], size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'With: ${conversation['otherUserName']}',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.restaurant, color: Color(0xFF00A74C), size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'About: ${conversation['foodName']}',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'This action cannot be undone and will remove the conversation for both users.',
-              style: TextStyle(
-                color: Colors.red[700],
-                fontSize: 13,
-                fontStyle: FontStyle.italic,
+              const SizedBox(height: 16),
+              Text(
+                'This will only delete the conversation for you. If both users delete, it will be removed from the database.',
+                style: TextStyle(
+                  color: Colors.red[700],
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('Cancel'),
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.delete, size: 16),
-                SizedBox(width: 4),
-                Text('Delete for Everyone'),
-              ],
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.delete, size: 16),
+                  SizedBox(width: 4),
+                  Flexible(child: Text('Delete for Me', overflow: TextOverflow.ellipsis)),
+                ],
+              ),
             ),
           ),
         ],
@@ -402,13 +421,13 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
     if (shouldDelete == true) {
       try {
-        await _messagingService.deleteConversationForEveryone(
+        await _messagingService.deleteConversation(
           conversation['conversationId'],
           conversation['otherUserId'],
         );
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Conversation permanently deleted'),
+            content: Text('Conversation deleted from your account'),
             backgroundColor: Color(0xFF00A74C),
           ),
         );

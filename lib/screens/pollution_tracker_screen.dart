@@ -21,6 +21,8 @@ import '../screens/food_locator.dart';
 import '../widgets/message_button.dart';
 import '../widgets/friend_button.dart';
 import '../widgets/modern_bottom_nav.dart';
+import '../widgets/tab_page_transition.dart';
+import 'dart:math';
 
 class PollutionTrackerScreen extends StatefulWidget {
   const PollutionTrackerScreen({super.key});
@@ -36,9 +38,10 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
   final Set<Marker> _markers = {};
   bool _isLoading = true;
   String _errorMessage = '';
+  bool _isCenteredOnUser = true;  // Add this line to track if we're centered on user
 
   // Add clustering related variables
-  static const double _clusterRadius = 0.1; // 0.1 miles for clustering
+  static const double _clusterRadius = 0.2; // 0.2 miles for clustering
   final Map<String, List<Map<String, dynamic>>> _clusteredMarkers = {};
   final Set<Marker> _displayedMarkers = {};
 
@@ -135,15 +138,19 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
     switch (index) {
       case 0:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const FoodLocatorScreen(),
+          TabPageTransition(
+            page: const FoodLocatorScreen(),
+            fromIndex: _currentIndex,
+            toIndex: index,
           ),
         );
         break;
       case 1:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const EcoChallengesScreen(),
+          TabPageTransition(
+            page: const EcoChallengesScreen(),
+            fromIndex: _currentIndex,
+            toIndex: index,
           ),
         );
         break;
@@ -202,32 +209,45 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
       if (!serviceEnabled) {
         serviceEnabled = await _location.requestService();
         if (!serviceEnabled) {
-          _setError('Location services are disabled');
+          _safeSetState(() {
+            _errorMessage = 'Location services are disabled';
+            _isLoading = false;
+          });
           return;
         }
       }
-      PermissionStatus permissionGranted = await _location.hasPermission();
-      if (permissionGranted == PermissionStatus.denied) {
-        permissionGranted = await _location.requestPermission();
-        if (permissionGranted != PermissionStatus.granted) {
-          _setError('Location permission denied');
+
+      PermissionStatus permission = await _location.hasPermission();
+      if (permission == PermissionStatus.denied) {
+        permission = await _location.requestPermission();
+        if (permission == PermissionStatus.denied) {
+          _safeSetState(() {
+            _errorMessage = 'Location permissions are denied';
+            _isLoading = false;
+          });
           return;
         }
       }
-      LocationData locationData = await _location.getLocation();
+
+      // Get initial location
+      _currentLocation = await _location.getLocation();
+      
+      // Set up location updates but don't auto-center
+      _locationSubscription?.cancel();
+      _locationSubscription = _location.onLocationChanged.listen((LocationData locationData) {
+        _safeSetState(() {
+          _currentLocation = locationData;
+        });
+      });
+
       _safeSetState(() {
-        _currentLocation = locationData;
         _isLoading = false;
       });
-      _locationSubscription?.cancel();
-      _locationSubscription = _location.onLocationChanged.listen((LocationData newLocation) {
-        _safeSetState(() {
-          _currentLocation = newLocation;
-        });
-        _animateToLocation(newLocation);
-      });
     } catch (e) {
-      _setError('Failed to get location: $e');
+      _safeSetState(() {
+        _errorMessage = 'Error getting location: $e';
+        _isLoading = false;
+      });
     }
   }
 
@@ -241,6 +261,9 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
           ),
         ),
       );
+      setState(() {
+        _isCenteredOnUser = true;
+      });
     }
   }
 
@@ -290,47 +313,75 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
   }
 
   Future<BitmapDescriptor> _createMarkerIcon(String pollutionType, {int? count}) async {
-    final config = _pollutionTypes[pollutionType] ?? _pollutionTypes['Other']!;
+    // Create the base marker
+    final pictureRecorder = ui.PictureRecorder();
+    final canvas = Canvas(pictureRecorder);
+    const size = Size(64, 64);
     
+    // Calculate equilateral triangle points
+    final triangleSize = 60.0; // Size of the equilateral triangle
+    final triangleHeight = triangleSize * (sqrt(3) / 2); // Height of equilateral triangle
+    
+    // Center point of the triangle
+    final centerX = size.width / 2;
+    final centerY = size.height + triangleHeight / 2;
+
+    // Get the color for the marker
+    final config = _pollutionTypes[pollutionType] ?? _pollutionTypes['Other']!;
+    final markerColor = count != null && count > 1 ? Colors.black : config['color'] as Color;
+
+    // Draw the marker shape
+    final markerPaint = Paint()
+      ..color = markerColor
+      ..style = PaintingStyle.fill;
+
+    final markerBorderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    // Calculate the three points of the equilateral triangle
+    final path = Path()
+      ..moveTo(centerX, centerY - triangleHeight / 2) // Top point
+      ..lineTo(centerX - triangleSize / 2, centerY + triangleHeight / 2) // Bottom left
+      ..lineTo(centerX + triangleSize / 2, centerY + triangleHeight / 2) // Bottom right
+      ..close();
+
+    // Draw the marker
+    canvas.drawPath(path, markerPaint);
+    canvas.drawPath(path, markerBorderPaint);
+
     if (count != null && count > 1) {
-      // For clustered markers, create a custom marker with count
-      final pictureRecorder = ui.PictureRecorder();
-      final canvas = Canvas(pictureRecorder);
-      const size = Size(64, 64);
-      
-      // Draw the base marker
-      final markerPaint = Paint()
-        ..color = config['color']
+      // For clustered markers, add the red circle with count
+      // Position the circle to overlap with the top of the triangle
+      final circleCenter = Offset(
+        size.width / 2,
+        size.height - 10, // Move circle up to overlap with triangle
+      );
+
+      // Draw the red circle
+      final circlePaint = Paint()
+        ..color = Colors.red
         ..style = PaintingStyle.fill;
       
-      // Add border paint
+      // Add white border
       final borderPaint = Paint()
         ..color = Colors.white
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3.0;
       
-      final path = Path()
-        ..moveTo(size.width / 2, 0)
-        ..lineTo(size.width, size.height)
-        ..lineTo(0, size.height)
-        ..close();
-      
-      canvas.drawPath(path, markerPaint);
-      canvas.drawPath(path, borderPaint);
-      
-      // Draw the number badge
-      final badgePaint = Paint()
-        ..color = Colors.red
-        ..style = PaintingStyle.fill;
-      
-      const badgeSize = 40.0;
-      final badgeX = size.width - badgeSize / 2;
-      const badgeY = badgeSize / 2;
-      
+      // Draw the circle
       canvas.drawCircle(
-        Offset(badgeX, badgeY),
-        badgeSize / 2,
-        badgePaint,
+        circleCenter,
+        size.width / 2 - 2, // Leave some space for the border
+        circlePaint,
+      );
+      
+      // Draw the border
+      canvas.drawCircle(
+        circleCenter,
+        size.width / 2 - 2,
+        borderPaint,
       );
       
       // Draw the number
@@ -350,23 +401,32 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
       textPainter.paint(
         canvas,
         Offset(
-          badgeX - textPainter.width / 2,
-          badgeY - textPainter.height / 2,
+          circleCenter.dx - textPainter.width / 2,
+          circleCenter.dy - textPainter.height / 2,
         ),
       );
-      
-      final picture = pictureRecorder.endRecording();
-      final image = await picture.toImage(
-        size.width.toInt(),
-        size.height.toInt(),
+
+      // Draw the connecting line from the bottom of the circle to the top of the triangle
+      final linePaint = Paint()
+        ..color = markerColor // Use the same color as the triangle
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0;
+
+      canvas.drawLine(
+        Offset(circleCenter.dx, circleCenter.dy + (size.width / 2 - 2)), // Bottom of circle
+        Offset(centerX, centerY - triangleHeight / 2), // Top of triangle
+        linePaint,
       );
-      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-      
-      return BitmapDescriptor.fromBytes(bytes!.buffer.asUint8List());
-    } else {
-      // For individual markers, use the default marker with hue
-      return BitmapDescriptor.defaultMarkerWithHue(config['hue']);
     }
+    
+    final picture = pictureRecorder.endRecording();
+    final image = await picture.toImage(
+      size.width.toInt(),
+      (size.height + triangleHeight).toInt(), // Add extra height for the larger triangle
+    );
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    
+    return BitmapDescriptor.fromBytes(bytes!.buffer.asUint8List());
   }
 
   void _buildMarkersFromData(Map<dynamic, dynamic> data) {
@@ -418,6 +478,7 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
           
           _markerDataCache[clusterKey] = clusterMarkerData;
           
+          // Add the cluster marker (red circle with count and connected marker)
           _markers.add(
             Marker(
               markerId: MarkerId(clusterKey),
@@ -434,7 +495,7 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
             ),
           );
         } else {
-          // Create individual marker
+          // Single marker (not part of a cluster)
           final markerData = markers[0];
           final isMyMarker = markerData['addedBy'] == _currentUserId;
           final addedByName = markerData['addedByName'] ?? 'Unknown User';
@@ -655,13 +716,16 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
                                 ),
                                 if (markerData['description'] != null && markerData['description'].isNotEmpty) ...[
                                   const SizedBox(height: 8),
-                                  Text(
-                                    markerData['description'],
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: Colors.grey[600],
-                                      fontSize: 14,
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      markerData['description'],
+                                      style: const TextStyle(fontSize: 14, color: Colors.white),
                                     ),
                                   ),
                                 ],
@@ -709,106 +773,138 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
     );
   }
 
-  Future<void> _addPollutionMarker() async {
-    if (_currentLocation == null) {
-      _showSnackBar('Location not available. Please wait for GPS.', Colors.red);
-      return;
-    }
-    final pollutionData = await _showPollutionInputDialog();
-    if (pollutionData == null) return;
-
-    // Show loading dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            const Text('Processing report...'),
-            Text(
-              'Converting images...',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    try {
-      final markerId = 'pollution_${DateTime.now().millisecondsSinceEpoch}';
-      final pollutionConfig = _pollutionTypes[pollutionData['pollutionType']] ?? _pollutionTypes['Other']!;
-
-      // Image processing
-      List<String> base64Images = [];
-      for (int i = 0; i < pollutionData['images'].length; i++) {
-        final imageFile = pollutionData['images'][i] as File;
-        final base64String = await _convertImageToBase64(imageFile);
-        if (base64String != null) {
-          base64Images.add(base64String);
-        }
-      }
-
-      final markerData = {
-        'pollutionType': pollutionData['pollutionType'],
-        'severity': pollutionData['severity'],
-        'description': pollutionData['description'],
-        'location': {
-          'latitude': _currentLocation!.latitude!,
-          'longitude': _currentLocation!.longitude!,
-        },
-        'timestamp': ServerValue.timestamp,
-        'addedBy': _currentUserId,
-        'addedByName': _currentUserName,
-        'images': base64Images,
-        'imageCount': base64Images.length,
-      };
-
-      // Cache the marker data
-      _markerDataCache[markerId] = markerData;
-
-      // Add marker locally first
-      _safeSetState(() {
-        _markers.add(
-          Marker(
-            markerId: MarkerId(markerId),
-            position: LatLng(
-              _currentLocation!.latitude!,
-              _currentLocation!.longitude!,
-            ),
-            infoWindow: InfoWindow(
-              title: '${pollutionData['pollutionType']} - ${pollutionData['severity']}',
-              snippet: 'Reported by you • Tap to view details',
-            ),
-            icon: BitmapDescriptor.defaultMarkerWithHue(pollutionConfig['hue']),
-            onTap: () => _onMarkerTapped(markerId, markerData),
-          ),
-        );
-      });
-
-      // Save to Firebase if connected
-      if (_firebaseConnected && _pollutionMarkersRef != null) {
-        // First update the user marker count
-        final userMarkerCountRef = _database!.child('userMarkerCounts').child(_currentUserId);
-        final currentCount = await userMarkerCountRef.get();
-        final newCount = (currentCount.exists ? (currentCount.value as num) : 0) + 1;
-        await userMarkerCountRef.set(newCount);
-        
-        // Then save the marker
-        await _pollutionMarkersRef!.child(markerId).set(markerData);
-        Navigator.of(context).pop();
-        _showSnackBar('Pollution report "${pollutionData['pollutionType']}" shared with community!', Colors.green);
-      } else {
-        Navigator.of(context).pop();
-        _showSnackBar('Report added locally (offline mode)', Colors.orange);
-      }
-    } catch (e) {
-      Navigator.of(context).pop();
-      _showSnackBar('Failed to save report: $e', Colors.red);
-    }
+Future<void> _addPollutionMarker() async {
+  if (_currentLocation == null) {
+    _showSnackBar('Location not available. Please wait for GPS.', Colors.red);
+    return;
   }
+  
+  print('=== DEBUGGING POLLUTION MARKER CREATION ===');
+  print('Current user ID: $_currentUserId');
+  print('Current user name: $_currentUserName');
+  
+  final pollutionData = await _showPollutionInputDialog();
+  if (pollutionData == null) return;
+
+  // Show loading dialog
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          const Text('Processing report...'),
+          Text(
+            'Converting images...',
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  try {
+    final markerId = 'pollution_${DateTime.now().millisecondsSinceEpoch}';
+    final pollutionConfig = _pollutionTypes[pollutionData['pollutionType']] ?? _pollutionTypes['Other']!;
+
+    // Image processing
+    List<String> base64Images = [];
+    for (int i = 0; i < pollutionData['images'].length; i++) {
+      final imageFile = pollutionData['images'][i] as File;
+      final base64String = await _convertImageToBase64(imageFile);
+      if (base64String != null) {
+        base64Images.add(base64String);
+      }
+    }
+
+    final markerData = {
+      'pollutionType': pollutionData['pollutionType'],
+      'severity': pollutionData['severity'],
+      'description': pollutionData['description'],
+      'location': {
+        'latitude': _currentLocation!.latitude!,
+        'longitude': _currentLocation!.longitude!,
+      },
+      'timestamp': ServerValue.timestamp,
+      'addedBy': _currentUserId,
+      'addedByName': _currentUserName,
+      'images': base64Images,
+      'imageCount': base64Images.length,
+    };
+
+    print('Marker ID: $markerId');
+    print('Marker data keys: ${markerData.keys}');
+    print('Firebase connected: $_firebaseConnected');
+
+    // Cache the marker data
+    _markerDataCache[markerId] = markerData;
+
+    // Add marker locally first
+    _safeSetState(() {
+      _markers.add(
+        Marker(
+          markerId: MarkerId(markerId),
+          position: LatLng(
+            _currentLocation!.latitude!,
+            _currentLocation!.longitude!,
+          ),
+          infoWindow: InfoWindow(
+            title: '${pollutionData['pollutionType']} - ${pollutionData['severity']}',
+            snippet: 'Reported by you • Tap to view details',
+          ),
+          icon: BitmapDescriptor.defaultMarkerWithHue(pollutionConfig['hue']),
+          onTap: () => _onMarkerTapped(markerId, markerData),
+        ),
+      );
+    });
+
+    // Save to Firebase if connected - SKIP RATE LIMITING FOR NOW
+    if (_firebaseConnected && _pollutionMarkersRef != null) {
+      print('Attempting to save to Firebase WITHOUT rate limiting check...');
+      
+      // TEMPORARY: Skip the rate limiting check entirely
+      print('Writing marker data directly...');
+      await _pollutionMarkersRef!.child(markerId).set(markerData);
+      print('Marker data written successfully!');
+      
+      // OPTIONAL: Update count after successful write (if you want to track it)
+      try {
+        final userMarkerCountRef = _database!.child('userMarkerCounts').child(_currentUserId);
+        final currentCountSnapshot = await userMarkerCountRef.get();
+        final currentCount = currentCountSnapshot.exists ? (currentCountSnapshot.value as num) : 0;
+        await userMarkerCountRef.set(currentCount + 1);
+        print('Updated user marker count to: ${currentCount + 1}');
+      } catch (countError) {
+        print('Failed to update count (but marker was saved): $countError');
+        // Don't fail the entire operation just because count update failed
+      }
+      
+      Navigator.of(context).pop();
+      _showSnackBar('Pollution report "${pollutionData['pollutionType']}" shared with community!', Colors.green);
+    } else {
+      print('Firebase not connected or ref is null');
+      Navigator.of(context).pop();
+      _showSnackBar('Report added locally (offline mode)', Colors.orange);
+    }
+  } catch (e) {
+    print('ERROR in _addPollutionMarker: $e');
+    print('Error type: ${e.runtimeType}');
+    
+    Navigator.of(context).pop();
+    _showSnackBar('Failed to save report: $e', Colors.red);
+    
+    // Remove the locally added marker on error
+    _safeSetState(() {
+      _markers.removeWhere((marker) => marker.markerId.value.startsWith('pollution_'));
+      _markerDataCache.removeWhere((key, value) => key.startsWith('pollution_'));
+    });
+  }
+  
+  print('=== END DEBUGGING ===');
+}
 
   Future<String?> _convertImageToBase64(File imageFile) async {
     try {
@@ -841,412 +937,450 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
         builder: (context, setDialogState) {
           final pollutionConfig = _pollutionTypes[selectedPollutionType]!;
 
-          return AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.report_problem, color: Colors.red),
-                SizedBox(width: 8),
-                Text('Report Pollution'),
-              ],
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(32),
             ),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Report pollution at your current location:'),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Type of Pollution *',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey[400]!),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: selectedPollutionType,
-                          isExpanded: true,
-                          onChanged: (String? newValue) {
-                            setDialogState(() {
-                              selectedPollutionType = newValue!;
-                            });
-                          },
-                          items: _pollutionTypes.keys.map<DropdownMenuItem<String>>((String type) {
-                            final config = _pollutionTypes[type]!;
-                            return DropdownMenuItem<String>(
-                              value: type,
-                              child: Row(
-                                children: [
-                                  Icon(config['icon'], color: config['color'], size: 20),
-                                  const SizedBox(width: 8),
-                                  Text(type),
-                                ],
-                              ),
-                            );
-                          }).toList(),
+            child: Container(
+              width: double.infinity,
+              height: MediaQuery.of(context).size.height * 0.92,
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Fixed header
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.report_problem, color: Colors.red),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Report Pollution',
+                          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                          softWrap: true,
+                          overflow: TextOverflow.visible,
+                          maxLines: 2,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Severity Level *',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey[400]!),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: selectedSeverity,
-                          isExpanded: true,
-                          onChanged: (String? newValue) {
-                            setDialogState(() {
-                              selectedSeverity = newValue!;
-                            });
-                          },
-                          items: ['Low', 'Medium', 'High', 'Critical'].map<DropdownMenuItem<String>>((String severity) {
-                            Color severityColor = Colors.green;
-                            if (severity == 'Medium') {
-                              severityColor = Colors.orange;
-                            } else if (severity == 'High') severityColor = Colors.red;
-                            else if (severity == 'Critical') severityColor = Colors.red[900]!;
-                            return DropdownMenuItem<String>(
-                              value: severity,
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 12,
-                                    height: 12,
-                                    decoration: BoxDecoration(
-                                      color: severityColor,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(severity),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: descriptionController,
-                      onChanged: (value) => description = value,
-                      decoration: const InputDecoration(
-                        labelText: 'Description *',
-                        hintText: 'Describe the pollution issue...',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.description),
-                      ),
-                      maxLines: 3,
-                      textCapitalization: TextCapitalization.sentences,
-                    ),
-                    const SizedBox(height: 16),
-                    // AI Analysis Button - Conditional rendering based on analysis state
-                    if (!_aiAnalysisComplete) ...[
-                      SizedBox(
-                        width: double.infinity,
-                        child: _isAnalyzing
-                            ? Container(
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[300],
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Center(
-                                  child: SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.red[700]!),
-                                    ),
-                                  ),
-                                ),
-                              )
-                            : ElevatedButton.icon(
-                                onPressed: selectedImages.isEmpty
-                                    ? null
-                                    : () async {
-                                        if (selectedImages.isEmpty) return;
-                                        
-                                        setDialogState(() {
-                                          _isAnalyzing = true;
-                                        });
-                                        
-                                        try {
-                                          print('Starting AI pollution analysis...');
-                                          final analysis = await _geminiService.analyzePollutionImage(selectedImages[0]);
-                                          print('Analysis complete: $analysis');
-                                          
-                                          if (analysis['pollutionType'] == 'Error') {
-                                            throw Exception(analysis['description']);
-                                          }
-
-                                          if (analysis['pollutionType'] == 'NO_POLLUTION_DETECTED') {
-                                            showDialog(
-                                              context: context,
-                                              builder: (context) => AlertDialog(
-                                                title: const Row(
-                                                  children: [
-                                                    Icon(Icons.warning_amber_rounded, color: Colors.orange),
-                                                    SizedBox(width: 8),
-                                                    Text('No Pollution Detected'),
-                                                  ],
-                                                ),
-                                                content: const Text('The AI could not detect any pollution in the image. Please try again with a clearer image showing environmental issues.'),
-                                                actions: [
-                                                  TextButton(
-                                                    onPressed: () => Navigator.of(context).pop(),
-                                                    child: const Text('OK'),
-                                                  ),
-                                                ],
-                                              ),
-                                            );
-                                            // Reset the analysis state but don't mark as complete
-                                            setDialogState(() {
-                                              _isAnalyzing = false;
-                                            });
-                                            return;
-                                          }
-                                          
-                                          // Update the form with AI analysis
-                                          setDialogState(() {
-                                            selectedPollutionType = analysis['pollutionType'] ?? 'Other';
-                                            selectedSeverity = analysis['severity'] ?? 'Low';
-                                            descriptionController.text = analysis['description'] ?? '';
-                                            description = descriptionController.text;
-                                            _isAnalyzing = false;
-                                            _aiAnalysisComplete = true;
-                                          });
-                                          
-                                          // Show success message
-                                          showDialog(
-                                            context: context,
-                                            builder: (context) => AlertDialog(
-                                              title: Row(
-                                                children: [
-                                                  Icon(Icons.check_circle, color: Colors.red[700]),
-                                                  const SizedBox(width: 8),
-                                                  const Text('Analysis Complete'),
-                                                ],
-                                              ),
-                                              content: const Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    'The AI has analyzed the pollution in your image and filled in the form. Please review and edit the content to ensure it accurately represents the pollution issue.',
-                                                    style: TextStyle(fontSize: 16),
-                                                  ),
-                                                  SizedBox(height: 16),
-                                                  Text(
-                                                    'Important:',
-                                                    style: TextStyle(
-                                                      fontWeight: FontWeight.bold,
-                                                      color: Colors.red,
-                                                    ),
-                                                  ),
-                                                  SizedBox(height: 8),
-                                                  Text('• Verify the pollution type is correct'),
-                                                  Text('• Check that the severity level is accurate'),
-                                                  Text('• Make sure the description is precise'),
-                                                ],
-                                              ),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () => Navigator.of(context).pop(),
-                                                  child: const Text('I Will Review'),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                          
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: const Text('AI analysis complete!'),
-                                              backgroundColor: Colors.red[700],
-                                              duration: const Duration(seconds: 2),
-                                            ),
-                                          );
-                                        } catch (e) {
-                                          print('Error during AI analysis: $e');
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Failed to analyze image: $e'),
-                                              backgroundColor: Colors.red,
-                                              duration: const Duration(seconds: 3),
-                                            ),
-                                          );
-                                          // Reset analysis state on error
-                                          setDialogState(() {
-                                            _isAnalyzing = false;
-                                          });
-                                        }
-                                      },
-                                icon: const Icon(Icons.auto_awesome),
-                                label: const Text('Let AI Analyze Pollution'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red[700],
-                                  foregroundColor: Colors.white,
-                                  disabledBackgroundColor: Colors.grey[300],
-                                  disabledForegroundColor: Colors.grey[600],
-                                ),
-                              ),
-                      ),
-                      const SizedBox(height: 16),
                     ],
-                    const Text(
-                      'Photos * (At least 1 required)',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    if (selectedImages.isNotEmpty) ...[
-                      SizedBox(
-                        height: 100,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: selectedImages.length,
-                          itemBuilder: (context, index) {
-                            return Container(
-                              margin: const EdgeInsets.only(right: 8),
-                              child: Stack(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.file(
-                                      selectedImages[index],
-                                      width: 100,
-                                      height: 100,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                  Positioned(
-                                    top: 4,
-                                    right: 4,
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        setDialogState(() {
-                                          selectedImages.removeAt(index);
-                                        });
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Report pollution at your current location:'),
+                  const SizedBox(height: 16),
+                  
+                  // Scrollable content
+                  Expanded(
+                    child: Scrollbar(
+                      thumbVisibility: true,
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Type of Pollution *',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey[400]!),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: selectedPollutionType,
+                                  isExpanded: true,
+                                  onChanged: (String? newValue) {
+                                    setDialogState(() {
+                                      selectedPollutionType = newValue!;
+                                    });
+                                  },
+                                  items: _pollutionTypes.keys.map<DropdownMenuItem<String>>((String type) {
+                                    final config = _pollutionTypes[type]!;
+                                    return DropdownMenuItem<String>(
+                                      value: type,
+                                      child: Row(
+                                        children: [
+                                          Icon(config['icon'], color: config['color'], size: 20),
+                                          const SizedBox(width: 8),
+                                          Text(type),
+                                        ],
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Severity Level *',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey[400]!),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: selectedSeverity,
+                                  isExpanded: true,
+                                  onChanged: (String? newValue) {
+                                    setDialogState(() {
+                                      selectedSeverity = newValue!;
+                                    });
+                                  },
+                                  items: ['Low', 'Medium', 'High', 'Critical'].map<DropdownMenuItem<String>>((String severity) {
+                                    Color severityColor = Colors.green;
+                                    if (severity == 'Medium') {
+                                      severityColor = Colors.orange;
+                                    } else if (severity == 'High') severityColor = Colors.red;
+                                    else if (severity == 'Critical') severityColor = Colors.red[900]!;
+                                    return DropdownMenuItem<String>(
+                                      value: severity,
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 12,
+                                            height: 12,
+                                            decoration: BoxDecoration(
+                                              color: severityColor,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(severity),
+                                        ],
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: descriptionController,
+                              onChanged: (value) => description = value,
+                              decoration: const InputDecoration(
+                                labelText: 'Description *',
+                                hintText: 'Describe the pollution issue...',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.description),
+                              ),
+                              maxLines: 3,
+                              textCapitalization: TextCapitalization.sentences,
+                            ),
+                            const SizedBox(height: 16),
+                            // AI Analysis Button - Conditional rendering based on analysis state
+                            if (!_aiAnalysisComplete) ...[
+                              SizedBox(
+                                width: double.infinity,
+                                child: _isAnalyzing
+                                    ? Container(
+                                        height: 48,
                                         decoration: BoxDecoration(
-                                          color: Colors.red,
-                                          borderRadius: BorderRadius.circular(12),
+                                          color: Theme.of(context).colorScheme.surfaceVariant,
+                                          borderRadius: BorderRadius.circular(8),
                                         ),
-                                        child: const Icon(
-                                          Icons.close,
-                                          size: 16,
-                                          color: Colors.white,
+                                        child: Center(
+                                          child: SizedBox(
+                                            width: 24,
+                                            height: 24,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.error),
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : ElevatedButton.icon(
+                                        onPressed: selectedImages.isEmpty
+                                            ? null
+                                            : () async {
+                                                if (selectedImages.isEmpty) return;
+                                                
+                                                setDialogState(() {
+                                                  _isAnalyzing = true;
+                                                });
+                                                
+                                                try {
+                                                  print('Starting AI pollution analysis...');
+                                                  final analysis = await _geminiService.analyzePollutionImage(selectedImages[0]);
+                                                  print('Analysis complete: $analysis');
+                                                  
+                                                  if (analysis['pollutionType'] == 'Error') {
+                                                    throw Exception(analysis['description']);
+                                                  }
+
+                                                  if (analysis['pollutionType'] == 'NO_POLLUTION_DETECTED') {
+                                                    showDialog(
+                                                      context: context,
+                                                      builder: (context) => AlertDialog(
+                                                        title: const Row(
+                                                          children: [
+                                                            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                                                            SizedBox(width: 8),
+                                                            Text('No Pollution Detected'),
+                                                          ],
+                                                        ),
+                                                        content: const Text('The AI could not detect any pollution in the image. Please try again with a clearer image showing environmental issues.'),
+                                                        actions: [
+                                                          TextButton(
+                                                            onPressed: () => Navigator.of(context).pop(),
+                                                            child: const Text('OK'),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    );
+                                                    // Reset the analysis state but don't mark as complete
+                                                    setDialogState(() {
+                                                      _isAnalyzing = false;
+                                                    });
+                                                    return;
+                                                  }
+                                                  
+                                                  // Update the form with AI analysis
+                                                  setDialogState(() {
+                                                    selectedPollutionType = analysis['pollutionType'] ?? 'Other';
+                                                    selectedSeverity = analysis['severity'] ?? 'Low';
+                                                    descriptionController.text = analysis['description'] ?? '';
+                                                    description = descriptionController.text;
+                                                    _isAnalyzing = false;
+                                                    _aiAnalysisComplete = true;
+                                                  });
+                                                  
+                                                  // Show success message
+                                                  showDialog(
+                                                    context: context,
+                                                    builder: (context) => AlertDialog(
+                                                      title: Row(
+                                                        children: [
+                                                          Icon(Icons.check_circle, color: Colors.red[700]),
+                                                          const SizedBox(width: 8),
+                                                          const Text('Analysis Complete'),
+                                                        ],
+                                                      ),
+                                                      content: const Column(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                          Text(
+                                                            'The AI has analyzed the pollution in your image and filled in the form. Please review and edit the content to ensure it accurately represents the pollution issue.',
+                                                            style: TextStyle(fontSize: 16),
+                                                          ),
+                                                          SizedBox(height: 16),
+                                                          Text(
+                                                            'Important:',
+                                                            style: TextStyle(
+                                                              fontWeight: FontWeight.bold,
+                                                              color: Colors.red,
+                                                            ),
+                                                          ),
+                                                          SizedBox(height: 8),
+                                                          Text('• Verify the pollution type is correct'),
+                                                          Text('• Check that the severity level is accurate'),
+                                                          Text('• Make sure the description is precise'),
+                                                        ],
+                                                      ),
+                                                      actions: [
+                                                        TextButton(
+                                                          onPressed: () => Navigator.of(context).pop(),
+                                                          child: const Text('I Will Review'),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  );
+                                                  
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      content: const Text('AI analysis complete!'),
+                                                      backgroundColor: Colors.red[700],
+                                                      duration: const Duration(seconds: 2),
+                                                    ),
+                                                  );
+                                                } catch (e) {
+                                                  print('Error during AI analysis: $e');
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text('Failed to analyze image: $e'),
+                                                      backgroundColor: Colors.red,
+                                                      duration: const Duration(seconds: 3),
+                                                    ),
+                                                  );
+                                                  // Reset analysis state on error
+                                                  setDialogState(() {
+                                                    _isAnalyzing = false;
+                                                  });
+                                                }
+                                              },
+                                        icon: const Icon(Icons.auto_awesome),
+                                        label: const Text('Let AI Analyze Pollution'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.red[700],
+                                          foregroundColor: Colors.white,
+                                          disabledBackgroundColor: Colors.grey[300],
+                                          disabledForegroundColor: Colors.grey[600],
                                         ),
                                       ),
-                                    ),
-                                  ),
-                                ],
                               ),
-                            );
-                          },
+                              const SizedBox(height: 16),
+                            ],
+                            const Text(
+                              'Photos * (At least 1 required)',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            if (selectedImages.isNotEmpty) ...[
+                              SizedBox(
+                                height: 100,
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: selectedImages.length,
+                                  itemBuilder: (context, index) {
+                                    return Container(
+                                      margin: const EdgeInsets.only(right: 8),
+                                      child: Stack(
+                                        children: [
+                                          ClipRRect(
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: Image.file(
+                                              selectedImages[index],
+                                              width: 100,
+                                              height: 100,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
+                                          Positioned(
+                                            top: 4,
+                                            right: 4,
+                                            child: GestureDetector(
+                                              onTap: () {
+                                                setDialogState(() {
+                                                  selectedImages.removeAt(index);
+                                                });
+                                              },
+                                              child: Container(
+                                                padding: const EdgeInsets.all(4),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.red,
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                                child: const Icon(
+                                                  Icons.close,
+                                                  size: 16,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final image = await _imagePicker.pickImage(
+                                        source: ImageSource.camera,
+                                        maxWidth: 1024,
+                                        maxHeight: 1024,
+                                        imageQuality: 80,
+                                      );
+                                      if (image != null) {
+                                        setDialogState(() {
+                                          selectedImages.add(File(image.path));
+                                        });
+                                      }
+                                    },
+                                    icon: const Icon(Icons.camera_alt),
+                                    label: const Text('Camera'),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final image = await _imagePicker.pickImage(
+                                        source: ImageSource.gallery,
+                                        maxWidth: 1024,
+                                        maxHeight: 1024,
+                                        imageQuality: 80,
+                                      );
+                                      if (image != null) {
+                                        setDialogState(() {
+                                          selectedImages.add(File(image.path));
+                                        });
+                                      }
+                                    },
+                                    icon: const Icon(Icons.photo_library),
+                                    label: const Text('Gallery'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (selectedImages.isEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  'Please add at least one photo (camera or gallery)',
+                                  style: TextStyle(
+                                    color: Colors.red[600],
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            // Add some extra padding at the bottom for better scrolling
+                            const SizedBox(height: 20),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 8),
-                    ],
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              final image = await _imagePicker.pickImage(
-                                source: ImageSource.camera,
-                                maxWidth: 1024,
-                                maxHeight: 1024,
-                                imageQuality: 80,
-                              );
-                              if (image != null) {
-                                setDialogState(() {
-                                  selectedImages.add(File(image.path));
-                                });
-                              }
-                            },
-                            icon: const Icon(Icons.camera_alt),
-                            label: const Text('Camera'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              final image = await _imagePicker.pickImage(
-                                source: ImageSource.gallery,
-                                maxWidth: 1024,
-                                maxHeight: 1024,
-                                imageQuality: 80,
-                              );
-                              if (image != null) {
-                                setDialogState(() {
-                                  selectedImages.add(File(image.path));
-                                });
-                              }
-                            },
-                            icon: const Icon(Icons.photo_library),
-                            label: const Text('Gallery'),
-                          ),
-                        ),
-                      ],
                     ),
-                    if (selectedImages.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          'Please add at least one photo (camera or gallery)',
-                          style: TextStyle(
-                            color: Colors.red[600],
-                            fontSize: 12,
-                          ),
-                        ),
+                  ),
+                  
+                  // Fixed footer with action buttons
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancel'),
                       ),
-                  ],
-                ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: description.trim().isNotEmpty && selectedImages.isNotEmpty
+                            ? () {
+                                Navigator.of(context).pop({
+                                  'pollutionType': selectedPollutionType,
+                                  'severity': selectedSeverity,
+                                  'description': description.trim(),
+                                  'images': selectedImages,
+                                });
+                              }
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Report'),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: description.trim().isNotEmpty && selectedImages.isNotEmpty
-                    ? () {
-                        Navigator.of(context).pop({
-                          'pollutionType': selectedPollutionType,
-                          'severity': selectedSeverity,
-                          'description': description.trim(),
-                          'images': selectedImages,
-                        });
-                      }
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Report'),
-              ),
-            ],
           );
         },
       );
@@ -1362,12 +1496,12 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
                             width: double.infinity,
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: Colors.grey[100],
+                              color: Colors.black,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               markerData['description'],
-                              style: const TextStyle(fontSize: 14),
+                              style: const TextStyle(fontSize: 14, color: Colors.white),
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -2059,61 +2193,87 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
                 children: [
                   Container(
                     padding: const EdgeInsets.all(16),
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black12,
-                          blurRadius: 4,
-                          offset: Offset(0, -2),
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, -2),
                         ),
                       ],
                     ),
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              'Pollution Reports',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red[700],
+                            Expanded(
+                              child: Text(
+                                'Pollution Reports',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[800],
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            Row(
-                              children: [
-                                Text(
-                                  'km',
-                                  style: TextStyle(
-                                    color: !_useMiles ? Colors.red[700] : Colors.grey,
-                                    fontWeight: !_useMiles ? FontWeight.bold : FontWeight.normal,
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[100],
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  TextButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _useMiles = true;
+                                      });
+                                    },
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: Text(
+                                      'mi',
+                                      style: TextStyle(
+                                        color: _useMiles ? Colors.green[600] : Colors.grey[600],
+                                        fontWeight: _useMiles ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                                Switch(
-                                  value: _useMiles,
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _updateRadiusForUnitChange(value);
-                                      _useMiles = value;
-                                    });
-                                  },
-                                  activeColor: Colors.red[700],
-                                ),
-                                Text(
-                                  'mi',
-                                  style: TextStyle(
-                                    color: _useMiles ? Colors.red[700] : Colors.grey,
-                                    fontWeight: _useMiles ? FontWeight.bold : FontWeight.normal,
+                                  Text(
+                                    '|',
+                                    style: TextStyle(color: Colors.grey[400]),
                                   ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.close),
-                                  onPressed: () => Navigator.pop(context),
-                                ),
-                              ],
+                                  TextButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _useMiles = false;
+                                      });
+                                    },
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: Text(
+                                      'km',
+                                      style: TextStyle(
+                                        color: !_useMiles ? Colors.green[600] : Colors.grey[600],
+                                        fontWeight: !_useMiles ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -2187,23 +2347,35 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
                             Expanded(
                               child: DropdownButtonFormField<String>(
                                 value: _sortBy,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: 'Sort by',
-                                  border: OutlineInputBorder(),
-                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  border: const OutlineInputBorder(
+                                    borderRadius: BorderRadius.zero,
+                                    borderSide: BorderSide(color: Colors.grey),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                                  isDense: false,
                                 ),
+                                isExpanded: true,
+                                icon: Icon(Icons.arrow_drop_down, color: Colors.red[700]),
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14),
+                                dropdownColor: Theme.of(context).colorScheme.surface,
                                 items: const [
                                   DropdownMenuItem(
                                     value: 'distance',
-                                    child: Text('Distance'),
+                                    child: Text('Distance', style: TextStyle(color: Colors.white)),
                                   ),
                                   DropdownMenuItem(
                                     value: 'recent',
-                                    child: Text('Most Recent'),
+                                    child: Text('Most Recent', style: TextStyle(color: Colors.white)),
                                   ),
                                   DropdownMenuItem(
-                                    value: 'name',
-                                    child: Text('Type'),
+                                    value: 'severity',
+                                    child: Text('Severity', style: TextStyle(color: Colors.white)),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'type',
+                                    child: Text('Type', style: TextStyle(color: Colors.white)),
                                   ),
                                 ],
                                 onChanged: (value) {
@@ -2221,8 +2393,11 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
                                 decoration: const InputDecoration(
                                   labelText: 'Search',
                                   prefixIcon: Icon(Icons.search),
-                                  border: OutlineInputBorder(),
-                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.zero,
+                                    borderSide: BorderSide(color: Colors.grey),
+                                  ),
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                                 ),
                                 onChanged: (value) {
                                   setState(() {
@@ -2364,13 +2539,16 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
                                           markerData['description'] != null && 
                                           markerData['description'].isNotEmpty) ...[
                                         const SizedBox(height: 8),
-                                        Text(
-                                          markerData['description'],
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: Colors.grey[600],
-                                            fontSize: 14,
+                                        Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black,
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            markerData['description'],
+                                            style: const TextStyle(fontSize: 14, color: Colors.white),
                                           ),
                                         ),
                                       ],
@@ -2664,29 +2842,29 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
     );
   }
 
+  void _onCameraMove(CameraPosition position) {
+    if (_currentLocation != null) {
+      final distance = _calculateDistance(
+        position.target.latitude,
+        position.target.longitude,
+        _currentLocation!.latitude!,
+        _currentLocation!.longitude!,
+      );
+      // If we're more than 100 meters away from user location, show the button
+      setState(() {
+        _isCenteredOnUser = distance < 0.1; // 0.1 km = 100 meters
+      });
+    }
+  }
+
   // The main build method
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.black,
         elevation: 2,
-        title: Row(
-          children: [
-            Icon(Icons.report_problem, color: Colors.red[700]),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                'Pollution Tracker',
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Colors.red[700],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
+        title: Icon(Icons.report_problem, color: Colors.red[700]),
         actions: [
           IconButton(
             icon: Icon(Icons.list, color: Colors.red[700]),
@@ -2868,7 +3046,23 @@ class _PollutionTrackerScreenState extends State<PollutionTrackerScreen> {
                   compassEnabled: true,
                   mapType: MapType.normal,
                   zoomControlsEnabled: false,
+                  onCameraMove: _onCameraMove,
                 ),
+                if (!_isCenteredOnUser)
+                  Positioned(
+                    left: 20,
+                    bottom: 20,
+                    child: FloatingActionButton(
+                      onPressed: () {
+                        if (_currentLocation != null) {
+                          _animateToLocation(_currentLocation!);
+                        }
+                      },
+                      backgroundColor: Colors.red[700],
+                      child: const Icon(Icons.my_location, color: Colors.white),
+                      heroTag: "center_location",
+                    ),
+                  ),
                 Positioned(
                   bottom: 20,
                   right: 20,

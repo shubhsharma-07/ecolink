@@ -74,6 +74,15 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                   borderSide: const BorderSide(color: Colors.blue),
                 ),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                filled: true,
+                fillColor: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.black
+                    : Colors.white,
+              ),
+              style: TextStyle(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black,
               ),
               onChanged: (value) {
                 setState(() {});
@@ -197,34 +206,41 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           children: [
+            // Avatar
             CircleAvatar(
+              radius: 20,
               backgroundColor: Colors.blue[100],
               child: Icon(
                 Icons.person,
+                size: 20,
                 color: Colors.blue[700],
               ),
             ),
             const SizedBox(width: 12),
+            // User info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     userName,
                     style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Row(
                     children: [
                       Icon(
                         Icons.restaurant,
-                        size: 14,
+                        size: 12,
                         color: Colors.grey[600],
                       ),
                       const SizedBox(width: 4),
@@ -232,7 +248,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                         'Has food listings',
                         style: TextStyle(
                           color: Colors.grey[600],
-                          fontSize: 12,
+                          fontSize: 11,
                         ),
                       ),
                     ],
@@ -241,6 +257,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
               ),
             ),
             const SizedBox(width: 8),
+            // Action button
             _buildActionButton(userId, userName, status),
           ],
         ),
@@ -251,28 +268,34 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
   Widget _buildActionButton(String userId, String userName, FriendshipStatus status) {
     switch (status) {
       case FriendshipStatus.none:
-        return ElevatedButton.icon(
-          onPressed: () => _sendFriendRequest(userId, userName),
-          icon: const Icon(Icons.person_add, size: 16),
-          label: const Text('Add Friend'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            minimumSize: const Size(0, 32),
+        return SizedBox(
+          height: 32,
+          child: ElevatedButton.icon(
+            onPressed: () => _sendFriendRequest(userId, userName),
+            icon: const Icon(Icons.person_add, size: 14),
+            label: const Text('Add'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              textStyle: const TextStyle(fontSize: 12),
+            ),
           ),
         );
 
       case FriendshipStatus.pending:
-        return OutlinedButton.icon(
-          onPressed: () => _cancelFriendRequest(userId, userName),
-          icon: const Icon(Icons.schedule, size: 16),
-          label: const Text('Pending'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Colors.orange,
-            side: const BorderSide(color: Colors.orange),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            minimumSize: const Size(0, 32),
+        return SizedBox(
+          height: 32,
+          child: OutlinedButton.icon(
+            onPressed: () => _cancelFriendRequest(userId, userName),
+            icon: const Icon(Icons.schedule, size: 14),
+            label: const Text('Pending'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.orange,
+              side: const BorderSide(color: Colors.orange),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              textStyle: const TextStyle(fontSize: 12),
+            ),
           ),
         );
 
@@ -281,36 +304,32 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              width: 60,
+              height: 32,
+              width: 50,
               child: ElevatedButton(
                 onPressed: () => _acceptFriendRequest(userId, userName),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  minimumSize: const Size(0, 28),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  textStyle: const TextStyle(fontSize: 11),
                 ),
-                child: const Text(
-                  'Accept',
-                  style: TextStyle(fontSize: 11),
-                ),
+                child: const Text('Accept'),
               ),
             ),
             const SizedBox(width: 4),
             SizedBox(
-              width: 60,
+              height: 32,
+              width: 50,
               child: OutlinedButton(
                 onPressed: () => _declineFriendRequest(userId, userName),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.red,
                   side: const BorderSide(color: Colors.red),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  minimumSize: const Size(0, 28),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  textStyle: const TextStyle(fontSize: 11),
                 ),
-                child: const Text(
-                  'Decline',
-                  style: TextStyle(fontSize: 11),
-                ),
+                child: const Text('Decline'),
               ),
             ),
           ],
@@ -318,16 +337,17 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
 
       case FriendshipStatus.friends:
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             color: Colors.green[50],
             border: Border.all(color: Colors.green),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.check_circle, size: 16, color: Colors.green),
+              Icon(Icons.check_circle, size: 14, color: Colors.green),
               SizedBox(width: 4),
               Text(
                 'Friends',

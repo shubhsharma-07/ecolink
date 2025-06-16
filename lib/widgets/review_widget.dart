@@ -5,11 +5,13 @@ import 'package:timeago/timeago.dart' as timeago;
 class ReviewWidget extends StatefulWidget {
   final String targetUserId;
   final String targetUserName;
+  final bool showReviewButton;
 
   const ReviewWidget({
     super.key,
     required this.targetUserId,
     required this.targetUserName,
+    this.showReviewButton = true,
   });
 
   @override
@@ -23,6 +25,8 @@ class _ReviewWidgetState extends State<ReviewWidget> {
   int _messageCount = 0;
   double _trustScore = 0.0;
   List<Map<String, dynamic>> _reviews = [];
+  bool _hasReviewed = false;
+  String _sortOption = 'newest';
 
   @override
   void initState() {
@@ -35,6 +39,7 @@ class _ReviewWidgetState extends State<ReviewWidget> {
     _messageCount = await _reviewService.getMessageCount(widget.targetUserId);
     _trustScore = await _reviewService.getUserTrustScore(widget.targetUserId);
     _reviews = await _reviewService.getUserReviews(widget.targetUserId);
+    _hasReviewed = await _reviewService.hasReviewed(widget.targetUserId);
     if (mounted) setState(() {});
   }
 
@@ -175,37 +180,57 @@ class _ReviewWidgetState extends State<ReviewWidget> {
     );
   }
 
-  void _showReviewDialog() {
-    int selectedRating = 0;
-    final dialogCommentController = TextEditingController();
+ void _showReviewDialog() {
+  int selectedRating = 0;
+  final dialogCommentController = TextEditingController();
 
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: const Text('Write Review'),
-            content: Column(
+  showDialog(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        final isTablet = screenWidth > 600;
+        
+        return AlertDialog(
+          title: const Text('Write Review'),
+          content: SingleChildScrollView(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text('How would you rate your experience with ${widget.targetUserName}?'),
                 const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(5, (index) {
-                    return IconButton(
-                      icon: Icon(
-                        index < selectedRating ? Icons.star : Icons.star_border,
-                        color: Colors.amber,
-                        size: 32,
+                // Star rating with FittedBox to prevent overflow
+                Center(
+                  child: SizedBox(
+                    width: isTablet ? 280 : double.infinity, // Limit width on tablets
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: List.generate(5, (index) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: InkWell(
+                              onTap: () {
+                                setState(() {
+                                  selectedRating = index + 1;
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(24),
+                              child: Padding(
+                                padding: const EdgeInsets.all(4),
+                                child: Icon(
+                                  index < selectedRating ? Icons.star : Icons.star_border,
+                                  color: Colors.amber,
+                                  size: 44, // This will scale down if needed
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
                       ),
-                      onPressed: () {
-                        setState(() {
-                          selectedRating = index + 1;
-                        });
-                      },
-                    );
-                  }),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -219,35 +244,82 @@ class _ReviewWidgetState extends State<ReviewWidget> {
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: selectedRating > 0
+                  ? () => _submitReview(selectedRating, dialogCommentController.text)
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00A74C),
+                foregroundColor: Colors.white,
               ),
-              ElevatedButton(
-                onPressed: selectedRating > 0
-                    ? () => _submitReview(selectedRating, dialogCommentController.text)
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00A74C),
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Submit'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
+              child: const Text('Submit'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {
+    // Sort reviews based on selected option
+    List<Map<String, dynamic>> sortedReviews = List.from(_reviews);
+    switch (_sortOption) {
+      case 'oldest':
+        sortedReviews.sort((a, b) => (a['timestamp'] ?? 0).compareTo(b['timestamp'] ?? 0));
+        break;
+      case 'highest':
+        sortedReviews.sort((a, b) => (b['rating'] ?? 0).compareTo(a['rating'] ?? 0));
+        break;
+      case 'lowest':
+        sortedReviews.sort((a, b) => (a['rating'] ?? 0).compareTo(b['rating'] ?? 0));
+        break;
+      case 'newest':
+      default:
+        sortedReviews.sort((a, b) => (b['timestamp'] ?? 0).compareTo(a['timestamp'] ?? 0));
+        break;
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildReviewButton(),
-        const SizedBox(height: 16),
+        if (widget.showReviewButton && !_hasReviewed) ...[
+          _buildReviewButton(),
+          const SizedBox(height: 16),
+        ],
+        if (_reviews.isNotEmpty) ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              const Text('Sort by:'),
+              const SizedBox(width: 8),
+              DropdownButton<String>(
+                value: _sortOption,
+                items: const [
+                  DropdownMenuItem(value: 'newest', child: Text('Newest')),
+                  DropdownMenuItem(value: 'oldest', child: Text('Oldest')),
+                  DropdownMenuItem(value: 'highest', child: Text('Highest Rated')),
+                  DropdownMenuItem(value: 'lowest', child: Text('Lowest Rated')),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _sortOption = value;
+                    });
+                  }
+                },
+              ),
+            ],
+          ),
+          const Divider(),
+        ],
         if (_reviews.isEmpty)
           Center(
             child: Padding(
@@ -265,9 +337,9 @@ class _ReviewWidgetState extends State<ReviewWidget> {
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: _reviews.length,
+            itemCount: sortedReviews.length,
             itemBuilder: (context, index) {
-              final review = _reviews[index];
+              final review = sortedReviews[index];
               final isMyReview = review['reviewerId'] == _reviewService.currentUserId;
               final timestamp = review['timestamp'] as int;
               final date = DateTime.fromMillisecondsSinceEpoch(timestamp);

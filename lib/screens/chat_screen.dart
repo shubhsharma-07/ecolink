@@ -41,6 +41,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final bool _hasError = false;
   final String _errorMessage = '';
   final int _messageCount = 0;
+  bool _hasReviewed = false;
 
   @override
   void initState() {
@@ -48,6 +49,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // Mark conversation as read when opening
     _messagingService.markConversationAsRead(widget.conversationId);
     _checkReviewEligibility();
+    _checkIfReviewed();
   }
 
   @override
@@ -238,6 +240,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildReviewNotification() {
+    if (_hasReviewed) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(12),
@@ -301,7 +304,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Row(
@@ -313,14 +316,14 @@ class _ChatScreenState extends State<ChatScreen> {
                 height: 40,
                 margin: const EdgeInsets.only(right: 12),
                 decoration: const BoxDecoration(
-                  color: Colors.white,
+                  color: Colors.black,
                   shape: BoxShape.circle,
                 ),
                 child: Center(
                   child: Text(
                     widget.otherUserName.isNotEmpty ? widget.otherUserName[0].toUpperCase() : '?',
                     style: const TextStyle(
-                      color: Color(0xFF00A74C),
+                      color: Colors.white,
                       fontWeight: FontWeight.bold,
                       fontSize: 20,
                     ),
@@ -334,7 +337,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 children: [
                   Text(
                     widget.otherUserName,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   Row(
                     children: [
@@ -354,7 +357,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ],
         ),
-        backgroundColor: const Color(0xFF00A74C),
+        backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 2,
       ),
@@ -428,9 +431,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.all(8),
-                  itemCount: messages.length + (_hasShownReviewNotification ? 1 : 0),
+                  itemCount: messages.length + (_hasShownReviewNotification && !_hasReviewed ? 1 : 0),
                   itemBuilder: (context, index) {
-                    if (_hasShownReviewNotification && index == messages.length) {
+                    if (_hasShownReviewNotification && !_hasReviewed && index == messages.length) {
                       return _buildReviewNotification();
                     }
                     final message = messages[index];
@@ -771,7 +774,7 @@ class _ChatScreenState extends State<ChatScreen> {
         return Container(
           height: MediaQuery.of(context).size.height * 0.4,
           decoration: const BoxDecoration(
-            color: Colors.white,
+            color: Colors.black,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
@@ -779,73 +782,50 @@ class _ChatScreenState extends State<ChatScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: const BoxDecoration(
-                  color: Color(0xFF00A74C),
+                  color: Colors.black,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
                 child: Row(
                   children: [
-                    Container(
-                      width: 60,
-                      height: 60,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Text(
-                          widget.otherUserName.isNotEmpty ? widget.otherUserName[0].toUpperCase() : '?',
-                          style: const TextStyle(
-                            color: Color(0xFF00A74C),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 24,
-                          ),
+                    Expanded(
+                      child: Text(
+                        widget.otherUserName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.otherUserName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.of(context).pop(),
                     ),
                   ],
                 ),
               ),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildProfileSection(
-                        'Current Listing',
-                        widget.foodName,
-                        Icons.restaurant,
-                      ),
-                      const SizedBox(height: 16),
-                      FutureBuilder<double>(
-                        future: _reviewService.getUserTrustScore(widget.otherUserId),
-                        builder: (context, snapshot) {
-                          final rating = snapshot.data ?? 0.0;
-                          return _buildProfileSection(
-                            'Average Rating',
-                            '${rating.toStringAsFixed(1)} ⭐',
-                            Icons.star,
-                          );
-                        },
-                      ),
-                    ],
+                child: Container(
+                  color: Colors.black,
+                  child: Center(
+                    child: Text(
+                      'Listing details go here',
+                      style: const TextStyle(color: Colors.white),
+                    ),
                   ),
+                ),
+              ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                color: Colors.black,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black,
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
                 ),
               ),
             ],
@@ -855,63 +835,21 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildProfileSection(String title, String content, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF00A74C).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              icon,
-              color: const Color(0xFF00A74C),
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  content,
-                  style: const TextStyle(
-                    color: Colors.black87,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _checkReviewEligibility() async {
     final messageCount = await _reviewService.getMessageCount(widget.otherUserId);
     if (messageCount >= ReviewService.REQUIRED_MESSAGES && !_hasShownReviewNotification) {
       setState(() {
         _canReview = true;
         _hasShownReviewNotification = true;
+      });
+    }
+  }
+
+  Future<void> _checkIfReviewed() async {
+    final reviewed = await _reviewService.hasReviewed(widget.otherUserId);
+    if (mounted) {
+      setState(() {
+        _hasReviewed = reviewed;
       });
     }
   }

@@ -15,14 +15,15 @@ dependencies:
   google_maps_flutter: ^2.5.0
   location: ^5.0.3
   firebase_core: ^2.24.2
-  firebase_database: ^10.4.0
+  firebase_database: ^10.5.7
   firebase_auth: ^4.15.2
   image_picker: ^1.0.4
   cupertino_icons: ^1.0.2
   google_generative_ai: ^0.2.0
   timeago: ^3.6.0
   firebase_remote_config: ^4.3.8
-  firebase_app_check: ^0.2.1+14
+  firebase_app_check: ^0.2.2+7
+  geolocator: ^12.0.0
 
 dev_dependencies:
   flutter_test:
@@ -43,4 +44,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
+    - assets/logonobg.png
     - assets/icon/

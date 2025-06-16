@@ -16,7 +16,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _nameController = TextEditingController();
   
   bool _isLogin = true;
   bool _isLoading = false;
@@ -51,7 +50,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     _animationController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    _nameController.dispose();
     super.dispose();
   }
 
@@ -79,10 +77,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           _passwordController.text,
         );
       } else {
+        // Register using email as display name
         await _authService.registerWithEmailAndPassword(
           _emailController.text.trim(),
           _passwordController.text,
-          _nameController.text.trim(),
+          _emailController.text.trim().split('@')[0], // Use email username as display name
         );
       }
       
@@ -93,7 +92,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         // Clear form and navigate
         _emailController.clear();
         _passwordController.clear();
-        _nameController.clear();
         
         Navigator.of(context).pushReplacementNamed('/food_locator');
       }
@@ -164,7 +162,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       // Clear form when switching modes
       _emailController.clear();
       _passwordController.clear();
-      _nameController.clear();
     });
   }
 
@@ -186,38 +183,55 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         child: SafeArea(
           child: FadeTransition(
             opacity: _fadeAnimation,
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Card(
-                  elevation: 8,
-                  shadowColor: kGreen.withOpacity(0.18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildHeader(),
-                        const SizedBox(height: 32),
-                        _buildForm(),
-                        const SizedBox(height: 24),
-                        _buildSubmitButton(),
-                        const SizedBox(height: 16),
-                        _buildAlternativeActions(),
-                        const SizedBox(height: 24),
-                        _buildToggleModeButton(),
-                        if (_errorMessage.isNotEmpty) ...[
-                          const SizedBox(height: 16),
-                          _buildErrorMessage(),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight - 32,
+                    ),
+                    child: IntrinsicHeight(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Flexible(
+                            child: Card(
+                              elevation: 8,
+                              shadowColor: kGreen.withOpacity(0.18),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              color: Theme.of(context).cardColor,
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _buildHeader(),
+                                    const SizedBox(height: 24),
+                                    _buildForm(),
+                                    const SizedBox(height: 20),
+                                    _buildSubmitButton(),
+                                    const SizedBox(height: 12),
+                                    _buildAlternativeActions(),
+                                    const SizedBox(height: 16),
+                                    _buildToggleModeButton(),
+                                    if (_errorMessage.isNotEmpty) ...[
+                                      const SizedBox(height: 12),
+                                      _buildErrorMessage(),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
         ),
@@ -231,24 +245,24 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         // Logo, not in a circle, bigger and cleaner
         Image.asset(
           'assets/logo.png',
-          height: 80,
+          height: 70,
           fit: BoxFit.contain,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Text(
           'EcoLink',
           style: TextStyle(
-            fontSize: 28,
+            fontSize: 26,
             fontWeight: FontWeight.bold,
             color: Colors.grey[800],
             letterSpacing: 1.2,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           _isLogin ? 'Welcome back!' : 'Create your account',
           style: TextStyle(
-            fontSize: 16,
+            fontSize: 15,
             color: Colors.grey[600],
           ),
         ),
@@ -261,30 +275,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       key: _formKey,
       child: Column(
         children: [
-          if (!_isLogin) ...[
-            TextFormField(
-              controller: _nameController,
-              decoration: InputDecoration(
-                labelText: 'Display Name',
-                prefixIcon: const Icon(Icons.person),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              validator: (value) {
-                if (!_isLogin && (value == null || value.trim().isEmpty)) {
-                  return 'Please enter your name';
-                }
-                if (!_isLogin && value!.trim().length < 2) {
-                  return 'Name must be at least 2 characters';
-                }
-                return null;
-              },
-              textInputAction: TextInputAction.next,
-              enabled: !_isLoading,
-            ),
-            const SizedBox(height: 16),
-          ],
           TextFormField(
             controller: _emailController,
             decoration: InputDecoration(
@@ -347,7 +337,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   Widget _buildSubmitButton() {
     return SizedBox(
       width: double.infinity,
-      height: 50,
+      height: 48,
       child: ElevatedButton(
         onPressed: _isLoading ? null : _submitForm,
         style: ElevatedButton.styleFrom(
@@ -363,14 +353,14 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   SizedBox(
-                    width: 20,
-                    height: 20,
+                    width: 18,
+                    height: 18,
                     child: CircularProgressIndicator(
                       color: Colors.white,
                       strokeWidth: 2,
                     ),
                   ),
-                  SizedBox(width: 12),
+                  SizedBox(width: 10),
                   Text('Please wait...'),
                 ],
               )
@@ -402,18 +392,26 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Text(
-          _isLogin ? "Don't have an account? " : "Already have an account? ",
-          style: TextStyle(color: Colors.grey[600]),
-        ),
-        TextButton(
-          onPressed: _isLoading ? null : _toggleMode,
-          style: TextButton.styleFrom(
-            foregroundColor: kGreen,
-          ),
+        Expanded(
           child: Text(
-            _isLogin ? 'Sign Up' : 'Sign In',
-            style: const TextStyle(fontWeight: FontWeight.bold),
+            _isLogin ? "Don't have an account? " : "Already have an account? ",
+            style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+          ),
+        ),
+        Flexible(
+          child: TextButton(
+            onPressed: _isLoading ? null : _toggleMode,
+            style: TextButton.styleFrom(
+              foregroundColor: kGreen,
+            ),
+            child: Text(
+              _isLogin ? 'Sign Up' : 'Sign In',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+            ),
           ),
         ),
       ],
@@ -421,21 +419,22 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   }
 
   Widget _buildErrorMessage() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.red[50],
+        color: colorScheme.errorContainer.withOpacity(0.2),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.red[200]!),
+        border: Border.all(color: colorScheme.errorContainer.withOpacity(0.5)),
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline, color: Colors.red[700], size: 20),
+          Icon(Icons.error_outline, color: colorScheme.error, size: 20),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               _errorMessage,
-              style: TextStyle(color: Colors.red[700], fontSize: 14),
+              style: TextStyle(color: colorScheme.error, fontSize: 14),
             ),
           ),
         ],

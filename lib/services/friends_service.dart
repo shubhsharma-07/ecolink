@@ -288,7 +288,7 @@ class FriendsService {
 
       print('Getting friendship status with: $userId');
 
-      // Check if already friends
+      // Check if already friends by looking at the actual friend data
       final friendSnapshot = await _database
           .child('userFriends')
           .child(currentUserId)
@@ -296,8 +296,20 @@ class FriendsService {
           .get();
 
       if (friendSnapshot.exists) {
-        print('Already friends with $userId');
-        return FriendshipStatus.friends;
+        final friendData = friendSnapshot.value as Map<dynamic, dynamic>;
+        // Check if the friendship data is valid
+        if (friendData['userName'] != null && friendData['timestamp'] != null) {
+          print('Already friends with $userId');
+          return FriendshipStatus.friends;
+        } else {
+          print('Invalid friend data for $userId');
+          // Clean up invalid friend data
+          await _database
+              .child('userFriends')
+              .child(currentUserId)
+              .child(userId)
+              .remove();
+        }
       }
 
       // Check for outgoing request
@@ -309,8 +321,12 @@ class FriendsService {
           .get();
 
       if (outgoingSnapshot.exists) {
-        print('Found outgoing request to $userId');
-        return FriendshipStatus.pending;
+        final outgoingData = outgoingSnapshot.value as Map<dynamic, dynamic>;
+        final status = outgoingData['status'] as String?;
+        print('Found outgoing request to $userId with status: $status');
+        if (status == 'pending') {
+          return FriendshipStatus.pending;
+        }
       }
 
       // Check for incoming request
@@ -322,8 +338,12 @@ class FriendsService {
           .get();
 
       if (incomingSnapshot.exists) {
-        print('Found incoming request from $userId');
-        return FriendshipStatus.requested;
+        final incomingData = incomingSnapshot.value as Map<dynamic, dynamic>;
+        final status = incomingData['status'] as String?;
+        print('Found incoming request from $userId with status: $status');
+        if (status == 'pending') {
+          return FriendshipStatus.requested;
+        }
       }
 
       print('No relationship with $userId');
@@ -450,8 +470,15 @@ class FriendsService {
           .child('outgoing')
           .get();
 
+      final incomingSnapshot = await _database
+          .child('userFriendRequests')
+          .child(currentUserId)
+          .child('incoming')
+          .get();
+
       final friends = <String>{};
       final pendingRequests = <String>{};
+      final incomingRequests = <String>{};
 
       if (friendsSnapshot.exists) {
         final friendsData = friendsSnapshot.value as Map<dynamic, dynamic>;
@@ -463,8 +490,14 @@ class FriendsService {
         pendingRequests.addAll(requestsData.keys.cast<String>());
       }
 
+      if (incomingSnapshot.exists) {
+        final requestsData = incomingSnapshot.value as Map<dynamic, dynamic>;
+        incomingRequests.addAll(requestsData.keys.cast<String>());
+      }
+
       print('Current friends: $friends');
       print('Pending requests: $pendingRequests');
+      print('Incoming requests: $incomingRequests');
 
       // Search in FOOD markers
       try {
@@ -482,6 +515,7 @@ class FriendsService {
                 userId != currentUserId &&
                 !friends.contains(userId) &&
                 !pendingRequests.contains(userId) &&
+                !incomingRequests.contains(userId) &&
                 userName.toLowerCase().contains(query.toLowerCase())) {
               
               users[userId] = {
@@ -513,6 +547,7 @@ class FriendsService {
                 userId != currentUserId &&
                 !friends.contains(userId) &&
                 !pendingRequests.contains(userId) &&
+                !incomingRequests.contains(userId) &&
                 userName.toLowerCase().contains(query.toLowerCase())) {
               
               users[userId] = {
@@ -542,6 +577,7 @@ class FriendsService {
                 userId != currentUserId &&
                 !friends.contains(userId) &&
                 !pendingRequests.contains(userId) &&
+                !incomingRequests.contains(userId) &&
                 userName.toLowerCase().contains(query.toLowerCase())) {
               
               users[userId] = {

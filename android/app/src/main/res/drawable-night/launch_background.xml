@@ -15,4 +15,4 @@
             android:gravity="center"
             android:src="@drawable/splash_logo" />
     </item>
-</layer-list>
+</layer-list> 
