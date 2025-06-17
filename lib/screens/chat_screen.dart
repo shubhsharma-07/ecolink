@@ -37,19 +37,13 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isSending = false;
   bool _hasShownReviewNotification = false;
   bool _canReview = false;
-  final bool _isLoading = true;
-  final bool _hasError = false;
-  final String _errorMessage = '';
-  final int _messageCount = 0;
   bool _hasReviewed = false;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    // Mark conversation as read when opening
-    _messagingService.markConversationAsRead(widget.conversationId);
-    _checkReviewEligibility();
-    _checkIfReviewed();
+    _initializeChat();
   }
 
   @override
@@ -59,17 +53,76 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  Future<void> _initializeChat() async {
+    print('🟦 CHAT SCREEN INITIALIZATION START');
+    print('Conversation ID: ${widget.conversationId}');
+    print('Other User ID: ${widget.otherUserId}');
+    print('Other User Name: ${widget.otherUserName}');
+    print('Food Name: ${widget.foodName}');
+    print('Food Marker ID: ${widget.foodMarkerId}');
+    
+    try {
+      // Initialize user conversation entry if needed (for recipients)
+      print('📋 Initializing user conversation...');
+      await _messagingService.initializeUserConversation(widget.conversationId);
+      
+      // Mark conversation as read
+      print('👁️ Marking conversation as read...');
+      await _messagingService.markConversationAsRead(widget.conversationId);
+      
+      // Check review eligibility
+      print('⭐ Checking review eligibility...');
+      await _checkReviewEligibility();
+      await _checkIfReviewed();
+      
+      setState(() {
+        _isInitialized = true;
+      });
+      print('🟦 CHAT SCREEN INITIALIZATION COMPLETE');
+    } catch (e) {
+      print('🔴 Error initializing chat: $e');
+      // Continue anyway - don't block the chat
+      setState(() {
+        _isInitialized = true;
+      });
+    }
+  }
+
   Future<String?> _convertImageToBase64(File imageFile) async {
     try {
       if (!await imageFile.exists()) return null;
+      
+      // Check file size (limit to 1MB for base64)
+      final fileSize = await imageFile.length();
+      if (fileSize > 1024 * 1024) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Image is too large. Please select a smaller image.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return null;
+      }
+      
       final bytes = await imageFile.readAsBytes();
       return base64Encode(bytes);
     } catch (e) {
+      print('Error converting image: $e');
       return null;
     }
   }
 
   void _showImagePickerModal() {
+    if (_selectedImages.length >= 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Maximum 3 images per message'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       builder: (BuildContext context) {
@@ -85,7 +138,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     source: ImageSource.camera,
                     maxWidth: 1024,
                     maxHeight: 1024,
-                    imageQuality: 80,
+                    imageQuality: 70,
                   );
                   if (image != null) {
                     setState(() {
@@ -103,7 +156,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     source: ImageSource.gallery,
                     maxWidth: 1024,
                     maxHeight: 1024,
-                    imageQuality: 80,
+                    imageQuality: 70,
                   );
                   if (image != null) {
                     setState(() {
@@ -169,6 +222,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     border: OutlineInputBorder(),
                   ),
                   maxLines: 3,
+                  maxLength: 500,
                 ),
               ],
             ),
@@ -178,7 +232,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: selectedRating == 0 ? null : () async {
+                onPressed: selectedRating == 0 || reviewController.text.trim().isEmpty
+                    ? null
+                    : () async {
                   try {
                     await _reviewService.submitReview(
                       reviewedId: widget.otherUserId,
@@ -186,43 +242,53 @@ class _ChatScreenState extends State<ChatScreen> {
                       comment: reviewController.text.trim(),
                     );
                     
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Review submitted successfully!'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
+                    if (mounted) {
+                      Navigator.pop(context);
+                      setState(() {
+                        _hasReviewed = true;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Review submitted successfully!'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
                   } catch (e) {
                     print('Error submitting review: $e');
-                    Navigator.pop(context);
-                    if (e.toString().contains('ALREADY_REVIEWED')) {
-                      showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Row(
-                            children: [
-                              Icon(Icons.info_outline, color: Colors.orange),
-                              SizedBox(width: 8),
-                              Text('Already Reviewed'),
+                    if (mounted) {
+                      Navigator.pop(context);
+                      if (e.toString().contains('ALREADY_REVIEWED')) {
+                        setState(() {
+                          _hasReviewed = true;
+                        });
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Row(
+                              children: [
+                                Icon(Icons.info_outline, color: Colors.orange),
+                                SizedBox(width: 8),
+                                Text('Already Reviewed'),
+                              ],
+                            ),
+                            content: Text('You have already reviewed ${widget.otherUserName}.'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('OK'),
+                              ),
                             ],
                           ),
-                          content: Text('You have already reviewed ${widget.otherUserName}.'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('OK'),
-                            ),
-                          ],
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Failed to submit review: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Failed to submit review. Please try again.'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
                     }
                   }
                 },
@@ -240,7 +306,10 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildReviewNotification() {
-    if (_hasReviewed) return const SizedBox.shrink();
+    if (_hasReviewed || !_canReview || !_hasShownReviewNotification) {
+      return const SizedBox.shrink();
+    }
+    
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(12),
@@ -283,14 +352,12 @@ class _ChatScreenState extends State<ChatScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: _canReview ? _showReviewDialog : null,
+              onPressed: _showReviewDialog,
               icon: const Icon(Icons.rate_review),
               label: const Text('Write Review'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF00A74C),
                 foregroundColor: Colors.white,
-                disabledBackgroundColor: Colors.grey[300],
-                disabledForegroundColor: Colors.grey[600],
               ),
             ),
           ),
@@ -316,14 +383,14 @@ class _ChatScreenState extends State<ChatScreen> {
                 height: 40,
                 margin: const EdgeInsets.only(right: 12),
                 decoration: const BoxDecoration(
-                  color: Colors.black,
+                  color: Colors.white,
                   shape: BoxShape.circle,
                 ),
                 child: Center(
                   child: Text(
                     widget.otherUserName.isNotEmpty ? widget.otherUserName[0].toUpperCase() : '?',
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: Colors.black,
                       fontWeight: FontWeight.bold,
                       fontSize: 20,
                     ),
@@ -367,20 +434,37 @@ class _ChatScreenState extends State<ChatScreen> {
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: _messagingService.getConversationMessages(widget.conversationId),
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                if (!_isInitialized || snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(
                     child: CircularProgressIndicator(color: Color(0xFF00A74C)),
                   );
                 }
 
                 if (snapshot.hasError) {
-                  return const Center(
+                  print('🔴 StreamBuilder error: ${snapshot.error}');
+                  return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.error_outline, size: 64, color: Colors.red),
-                        SizedBox(height: 16),
-                        Text('Error loading messages'),
+                        const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                        const SizedBox(height: 16),
+                        const Text('Error loading messages'),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Error: ${snapshot.error}',
+                          style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              _isInitialized = false;
+                            });
+                            _initializeChat();
+                          },
+                          child: const Text('Retry'),
+                        ),
                       ],
                     ),
                   );
@@ -417,8 +501,15 @@ class _ChatScreenState extends State<ChatScreen> {
                   );
                 }
 
-                // Auto-scroll to bottom when new messages arrive
-                WidgetsBinding.instance.addPostFrameCallback((_) {
+                // Mark as read when messages are displayed
+                WidgetsBinding.instance.addPostFrameCallback((_) async {
+                  try {
+                    await _messagingService.markConversationAsRead(widget.conversationId);
+                  } catch (e) {
+                    print('🔴 Error in addPostFrameCallback: $e');
+                  }
+                  
+                  // Auto-scroll to bottom
                   if (_scrollController.hasClients) {
                     _scrollController.animateTo(
                       _scrollController.position.maxScrollExtent,
@@ -449,6 +540,12 @@ class _ChatScreenState extends State<ChatScreen> {
             Container(
               height: 100,
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                border: Border(
+                  top: BorderSide(color: Colors.grey[300]!),
+                ),
+              ),
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 itemCount: _selectedImages.length,
@@ -461,8 +558,8 @@ class _ChatScreenState extends State<ChatScreen> {
                           borderRadius: BorderRadius.circular(8),
                           child: Image.file(
                             _selectedImages[index],
-                            width: 100,
-                            height: 100,
+                            width: 80,
+                            height: 80,
                             fit: BoxFit.cover,
                           ),
                         ),
@@ -505,6 +602,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final timestamp = message['timestamp'];
     final hasImages = message['hasImages'] == true;
     final images = List<String>.from(message['images'] ?? []);
+    // Handle both 'text' and 'message' fields for backward compatibility
+    final messageText = message['text'] ?? message['message'] ?? '';
     
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -520,6 +619,13 @@ class _ChatScreenState extends State<ChatScreen> {
             bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(18),
             bottomLeft: isMe ? const Radius.circular(18) : const Radius.circular(4),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -547,7 +653,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 width: 200,
                                 height: 200,
                                 color: Colors.grey[300],
-                                child: Icon(Icons.broken_image, color: Colors.grey[400]),
+                                child: const Icon(Icons.broken_image, color: Colors.grey),
                               );
                             },
                           ),
@@ -557,11 +663,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   },
                 ),
               ),
-              if (message['message']?.isNotEmpty == true) const SizedBox(height: 8),
+              if (messageText.isNotEmpty) const SizedBox(height: 8),
             ],
-            if (message['message']?.isNotEmpty == true)
+            if (messageText.isNotEmpty)
               Text(
-                message['message'] ?? '',
+                messageText,
                 style: TextStyle(
                   color: isMe ? Colors.white : Colors.black87,
                   fontSize: 16,
@@ -583,7 +689,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   Icon(
                     message['read'] == true ? Icons.done_all : Icons.done,
                     size: 14,
-                    color: message['read'] == true ? Colors.white : Colors.white70,
+                    color: message['read'] == true ? Colors.blue[200] : Colors.white70,
                   ),
                 ],
               ],
@@ -597,22 +703,33 @@ class _ChatScreenState extends State<ChatScreen> {
   void _showFullScreenImage(String base64Image) {
     showDialog(
       context: context,
+      barrierColor: Colors.black87,
       builder: (BuildContext context) {
         return Dialog(
           backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.zero,
           child: Stack(
             children: [
-              InteractiveViewer(
-                child: Image.memory(
-                  base64Decode(base64Image),
-                  fit: BoxFit.contain,
+              Center(
+                child: InteractiveViewer(
+                  child: Image.memory(
+                    base64Decode(base64Image),
+                    fit: BoxFit.contain,
+                  ),
                 ),
               ),
               Positioned(
-                top: 8,
+                top: MediaQuery.of(context).padding.top + 8,
                 right: 8,
                 child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
+                  icon: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Icon(Icons.close, color: Colors.white),
+                  ),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
               ),
@@ -624,33 +741,44 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildMessageInput() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDarkMode ? Colors.grey[900] : Colors.white;
+    final borderColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
+    final textColor = isDarkMode ? Colors.white : Colors.black;
+    final hintColor = isDarkMode ? Colors.grey[400] : Colors.grey[600];
+
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: backgroundColor,
         border: Border(
-          top: BorderSide(color: Colors.grey[300]!),
+          top: BorderSide(color: borderColor!),
         ),
       ),
       child: SafeArea(
         child: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.add_photo_alternate, color: Color(0xFF00A74C)),
+              icon: Icon(
+                Icons.add_photo_alternate,
+                color: _selectedImages.length >= 3 ? Colors.grey : const Color(0xFF00A74C),
+              ),
               onPressed: _showImagePickerModal,
             ),
             Expanded(
               child: TextField(
                 controller: _messageController,
+                style: TextStyle(color: textColor),
                 decoration: InputDecoration(
                   hintText: 'Type a message...',
+                  hintStyle: TextStyle(color: hintColor),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(25),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
+                    borderSide: BorderSide(color: borderColor),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(25),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
+                    borderSide: BorderSide(color: borderColor),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(25),
@@ -666,7 +794,9 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(width: 8),
             FloatingActionButton(
               mini: true,
-              backgroundColor: const Color(0xFF00A74C),
+              backgroundColor: _isSending || (_messageController.text.trim().isEmpty && _selectedImages.isEmpty)
+                  ? Colors.grey
+                  : const Color(0xFF00A74C),
               foregroundColor: Colors.white,
               onPressed: _isSending ? null : _sendMessage,
               child: _isSending
@@ -698,10 +828,16 @@ class _ChatScreenState extends State<ChatScreen> {
       final now = DateTime.now();
       final difference = now.difference(dateTime);
 
-      if (difference.inDays > 0) {
-        return '${dateTime.day}/${dateTime.month} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
+      if (difference.inDays > 7) {
+        return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+      } else if (difference.inDays > 0) {
+        return '${difference.inDays}d ago';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours}h ago';
+      } else if (difference.inMinutes > 0) {
+        return '${difference.inMinutes}m ago';
       } else {
-        return '${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
+        return 'Just now';
       }
     } catch (e) {
       return '';
@@ -709,7 +845,12 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _sendMessage() async {
-    if (_messageController.text.trim().isEmpty && _selectedImages.isEmpty) return;
+    print('🟦 SEND MESSAGE BUTTON CLICKED');
+    final messageText = _messageController.text.trim();
+    if (messageText.isEmpty && _selectedImages.isEmpty) {
+      print('No message text or images - returning');
+      return;
+    }
 
     setState(() {
       _isSending = true;
@@ -726,12 +867,13 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
 
+      print('📤 Calling messaging service sendMessage...');
       await _messagingService.sendMessage(
         recipientId: widget.otherUserId,
         recipientName: widget.otherUserName,
         foodMarkerId: widget.foodMarkerId,
         foodName: widget.foodName,
-        message: _messageController.text.trim(),
+        message: messageText,
         images: base64Images.isNotEmpty ? base64Images : null,
       );
 
@@ -745,27 +887,38 @@ class _ChatScreenState extends State<ChatScreen> {
 
       // Scroll to bottom after sending
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
+        await _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error sending message: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      print('🔴 Error sending message: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send message: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: _sendMessage,
+            ),
+          ),
+        );
+      }
     } finally {
-      setState(() {
-        _isSending = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
     }
   }
 
   void _showProfileDetails(BuildContext context) {
+    // Implementation remains the same
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -774,58 +927,78 @@ class _ChatScreenState extends State<ChatScreen> {
         return Container(
           height: MediaQuery.of(context).size.height * 0.4,
           decoration: const BoxDecoration(
-            color: Colors.black,
+            color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 ),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: Text(
-                        widget.otherUserName,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
+                    Container(
+                      width: 60,
+                      height: 60,
+                      decoration: const BoxDecoration(
+                        color: Colors.black,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          widget.otherUserName.isNotEmpty 
+                              ? widget.otherUserName[0].toUpperCase() 
+                              : '?',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 24,
+                          ),
                         ),
                       ),
                     ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.otherUserName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Icons.restaurant, size: 16, color: Colors.grey),
+                              const SizedBox(width: 4),
+                              Text(
+                                widget.foodName,
+                                style: const TextStyle(color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                     IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
+                      icon: const Icon(Icons.close),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ],
                 ),
               ),
               Expanded(
-                child: Container(
-                  color: Colors.black,
-                  child: Center(
-                    child: Text(
-                      'Listing details go here',
-                      style: const TextStyle(color: Colors.white),
-                    ),
+                child: Center(
+                  child: Text(
+                    'User profile details will be shown here',
+                    style: TextStyle(color: Colors.grey[600]),
                   ),
-                ),
-              ),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                color: Colors.black,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                  ),
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close'),
                 ),
               ),
             ],
@@ -836,21 +1009,31 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _checkReviewEligibility() async {
-    final messageCount = await _reviewService.getMessageCount(widget.otherUserId);
-    if (messageCount >= ReviewService.REQUIRED_MESSAGES && !_hasShownReviewNotification) {
-      setState(() {
-        _canReview = true;
-        _hasShownReviewNotification = true;
-      });
+    try {
+      final messageCount = await _reviewService.getMessageCount(widget.otherUserId);
+      print('📊 Message count for review eligibility: $messageCount');
+      if (messageCount >= ReviewService.REQUIRED_MESSAGES && !_hasShownReviewNotification) {
+        setState(() {
+          _canReview = true;
+          _hasShownReviewNotification = true;
+        });
+      }
+    } catch (e) {
+      print('Error checking review eligibility: $e');
     }
   }
 
   Future<void> _checkIfReviewed() async {
-    final reviewed = await _reviewService.hasReviewed(widget.otherUserId);
-    if (mounted) {
-      setState(() {
-        _hasReviewed = reviewed;
-      });
+    try {
+      final reviewed = await _reviewService.hasReviewed(widget.otherUserId);
+      print('📊 Has already reviewed: $reviewed');
+      if (mounted) {
+        setState(() {
+          _hasReviewed = reviewed;
+        });
+      }
+    } catch (e) {
+      print('Error checking if reviewed: $e');
     }
   }
 }

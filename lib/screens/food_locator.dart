@@ -6,18 +6,22 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import '../services/gemini_service.dart';
 import '../services/auth_service.dart';
 import '../services/messaging_service.dart';
 import '../services/friends_service.dart';
 import '../screens/conversations_screen.dart';
 import '../screens/friends_screen.dart';
-import '../widgets/message_button.dart';
-import '../widgets/friend_button.dart';
 import '../screens/eco_challenges_screen.dart';
 import '../screens/pollution_tracker_screen.dart';
-import '../services/gemini_service.dart';
+import '../widgets/message_button.dart';
+import '../widgets/friend_button.dart';
 import '../widgets/modern_bottom_nav.dart';
+import '../widgets/tab_page_transition.dart';
 import '../widgets/review_widget.dart';
 import '../services/review_service.dart';
 import '../widgets/tab_page_transition.dart';
@@ -790,9 +794,11 @@ setState(() {
               children: [
                 Container(
                   padding: const EdgeInsets.all(16),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE6F8EE),
-                    borderRadius: BorderRadius.only(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.black
+                        : const Color(0xFFE6F8EE),
+                    borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(32),
                       topRight: Radius.circular(32),
                     ),
@@ -807,15 +813,16 @@ setState(() {
                           children: [
                             Text(
                               markerData['name'] ?? 'Unknown Food',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
+                                color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
                               ),
                             ),
                             Text(
                               'Added by ${isMyMarker ? "you" : addedByName}',
                               style: TextStyle(
-                                color: Colors.grey[600],
+                                color: Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.grey[600],
                                 fontSize: 12,
                               ),
                             ),
@@ -824,7 +831,7 @@ setState(() {
                       ),
                       IconButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close, size: 20),
+                        icon: Icon(Icons.close, size: 20, color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                       ),
@@ -893,11 +900,36 @@ setState(() {
                                 scrollDirection: Axis.horizontal,
                                 itemCount: base64Images.length,
                                 itemBuilder: (context, index) {
-                                  return Container(
-                                    margin: const EdgeInsets.only(right: 8),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: _buildBase64Image(base64Images[index]),
+                                  return GestureDetector(
+                                    onTap: () {
+                                      showGeneralDialog(
+                                        context: context,
+                                        barrierDismissible: true,
+                                        barrierLabel: "Dismiss",
+                                        transitionDuration: const Duration(milliseconds: 200),
+                                        pageBuilder: (context, anim1, anim2) {
+                                          return _FullscreenImageViewer(
+                                            imageWidget: _buildBase64Image(
+                                              base64Images[index],
+                                              width: MediaQuery.of(context).size.width,
+                                              height: MediaQuery.of(context).size.height,
+                                            ),
+                                          );
+                                        },
+                                        transitionBuilder: (context, anim1, anim2, child) {
+                                          return FadeTransition(
+                                            opacity: anim1,
+                                            child: child,
+                                          );
+                                        },
+                                      );
+                                    },
+                                    child: Container(
+                                      margin: const EdgeInsets.only(right: 8),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: _buildBase64Image(base64Images[index]),
+                                      ),
                                     ),
                                   );
                                 },
@@ -944,79 +976,71 @@ setState(() {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.only(
-                      bottomLeft: Radius.circular(32),
-                      bottomRight: Radius.circular(32),
-                    ),
-                  ),
-                  child: Column(
+                  color: Theme.of(context).brightness == Brightness.dark ? Colors.black : Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                  child: Row(
                     children: [
                       if (!isMyMarker && addedById.isNotEmpty) ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: FriendButton(
-                                userId: addedById,
-                                userName: addedByName,
-                                isMyMarker: isMyMarker,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: MessageButton(
-                                recipientId: addedById,
-                                recipientName: addedByName,
-                                foodMarkerId: markerId,
-                                foodName: markerData['name'] ?? 'Unknown Food',
-                                isMyMarker: isMyMarker,
-                              ),
-                            ),
-                          ],
+                        Expanded(
+                          child: FriendButton(
+                            userId: addedById,
+                            userName: addedByName,
+                            isMyMarker: isMyMarker,
+                          ),
                         ),
-                        const SizedBox(height: 12),
-                      ],
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                textStyle: const TextStyle(fontSize: 14),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: MessageButton(
+                            recipientId: addedById,
+                            recipientName: addedByName,
+                            foodMarkerId: markerId,
+                            foodName: markerData['name'] ?? 'Unknown Food',
+                            isMyMarker: isMyMarker,
+                          ),
+                        ),
+                      ] else ...[
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              textStyle: const TextStyle(fontSize: 16),
+                              backgroundColor: Colors.transparent,
+                              foregroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
+                              side: BorderSide(
+                                color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black,
+                                width: 2.0,
                               ),
-                              child: const Text('Close'),
+                            ),
+                            child: Text('Close', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black)),
+                          ),
+                        ),
+                        if (isMyMarker) ...[
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () async {
+                                Navigator.of(context).pop();
+                                final shouldDelete = await _showDeleteConfirmationDialog(
+                                  markerData['name'] ?? 'Unknown Food',
+                                  addedByName,
+                                  isMyMarker
+                                );
+                                if (shouldDelete == true) {
+                                  await _deleteMarker(markerId, markerData['name'] ?? 'Unknown Food');
+                                }
+                              },
+                              icon: const Icon(Icons.delete, size: 18),
+                              label: const Text('Delete', style: TextStyle(fontSize: 16)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
                             ),
                           ),
-                          if (isMyMarker) ...[
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () async {
-                                  Navigator.of(context).pop();
-                                  final shouldDelete = await _showDeleteConfirmationDialog(
-                                    markerData['name'] ?? 'Unknown Food',
-                                    addedByName,
-                                    isMyMarker
-                                  );
-                                  if (shouldDelete == true) {
-                                    await _deleteMarker(markerId, markerData['name'] ?? 'Unknown Food');
-                                  }
-                                },
-                                icon: const Icon(Icons.delete, size: 18),
-                                label: const Text('Delete', style: TextStyle(fontSize: 14)),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                ),
-                              ),
-                            ),
-                          ],
                         ],
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -1028,18 +1052,18 @@ setState(() {
     );
   }
 
-  Widget _buildBase64Image(String base64String) {
+  Widget _buildBase64Image(String base64String, {double width = 150, double height = 150}) {
     try {
       final bytes = base64Decode(base64String);
       return Image.memory(
         bytes,
-        width: 150,
-        height: 150,
+        width: width,
+        height: height,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
           return Container(
-            width: 150,
-            height: 150,
+            width: width,
+            height: height,
             color: Colors.grey[200],
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1056,8 +1080,8 @@ setState(() {
       );
     } catch (e) {
       return Container(
-        width: 150,
-        height: 150,
+        width: width,
+        height: height,
         color: Colors.grey[200],
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1239,6 +1263,11 @@ setState(() {
     final shouldSignOut = await _showSignOutDialog();
     if (shouldSignOut == true) {
       try {
+        // Close the bottom sheet first
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+        
         await _authService.signOut();
         if (mounted) {
           Navigator.of(context).pushReplacementNamed('/login');
@@ -2432,6 +2461,114 @@ itemBuilder: (context, index) {
         currentIndex: _currentIndex,
         onTap: _onNavTap,
       ),
+    );
+  }
+}
+
+class _FullscreenImageViewer extends StatefulWidget {
+  final Widget imageWidget;
+  const _FullscreenImageViewer({required this.imageWidget});
+
+  @override
+  State<_FullscreenImageViewer> createState() => _FullscreenImageViewerState();
+}
+
+class _FullscreenImageViewerState extends State<_FullscreenImageViewer> with SingleTickerProviderStateMixin {
+  double _dragOffset = 0;
+  late AnimationController _controller;
+  late Animation<double> _animation;
+  bool _isDismissing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 200));
+    _animation = Tween<double>(begin: 0, end: 1).animate(_controller);
+  }
+
+  void _onVerticalDragUpdate(DragUpdateDetails details) {
+    setState(() {
+      _dragOffset += details.primaryDelta ?? 0;
+    });
+  }
+
+  void _onVerticalDragEnd(DragEndDetails details) {
+    if (_dragOffset > 100 && !_isDismissing) {
+      _isDismissing = true;
+      _controller.forward().then((_) {
+        if (mounted) Navigator.of(context).pop();
+      });
+    } else {
+      setState(() {
+        _dragOffset = 0;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        double slide = _dragOffset * (1 - _animation.value) + MediaQuery.of(context).size.height * _animation.value;
+        return GestureDetector(
+          onVerticalDragUpdate: _onVerticalDragUpdate,
+          onVerticalDragEnd: _onVerticalDragEnd,
+          child: Material(
+            color: Colors.black,
+            child: Stack(
+              children: [
+                Transform.translate(
+                  offset: Offset(0, slide),
+                  child: Center(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return Container(
+                          width: screenSize.width,
+                          height: screenSize.height,
+                          child: InteractiveViewer(
+                            minScale: 0.5,
+                            maxScale: 3.0,
+                            child: Center(
+                              child: AspectRatio(
+                                aspectRatio: 1.0, // This will be overridden by the image's natural aspect ratio
+                                child: widget.imageWidget,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 40,
+                  right: 24,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Colors.black,
+                      shape: BoxShape.circle,
+                    ),
+                    padding: const EdgeInsets.all(2),
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

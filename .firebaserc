@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "default": "food-locator-app-ec631",
+    "ecolink messages": "food-locator-app-ec631",
+    "ecolink": "food-locator-app-ec631"
+  },
+  "targets": {},
+  "etags": {}
+}

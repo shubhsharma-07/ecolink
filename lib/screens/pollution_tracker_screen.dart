@@ -1404,8 +1404,13 @@ Future<void> _addPollutionMarker() async {
       context: context,
       builder: (BuildContext context) {
         return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(32),
+          ),
           child: Container(
-            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
+            width: double.infinity,
+            height: MediaQuery.of(context).size.height * 0.92,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1414,8 +1419,8 @@ Future<void> _addPollutionMarker() async {
                   decoration: BoxDecoration(
                     color: pollutionConfig['color'].withOpacity(0.1),
                     borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(4),
-                      topRight: Radius.circular(4),
+                      topLeft: Radius.circular(32),
+                      topRight: Radius.circular(32),
                     ),
                   ),
                   child: Row(
@@ -1446,176 +1451,165 @@ Future<void> _addPollutionMarker() async {
                       IconButton(
                         onPressed: () => Navigator.of(context).pop(),
                         icon: const Icon(Icons.close),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
                       ),
                     ],
                   ),
                 ),
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
+                  child: Scrollbar(
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (markerData['description'] != null && markerData['description'].isNotEmpty) ...[
                             const Text(
-                              'Severity: ',
+                              'Description',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
                               ),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: _getSeverityColor(markerData['severity'] ?? 'Low'),
-                                borderRadius: BorderRadius.circular(12),
+                            const SizedBox(height: 8),
+                            Text(markerData['description']),
+                            const SizedBox(height: 16),
+                          ],
+                          if (base64Images.isNotEmpty) ...[
+                            const Text(
+                              'Photos',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
                               ),
-                              child: Text(
-                                markerData['severity'] ?? 'Low',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              height: 150,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: base64Images.length,
+                                itemBuilder: (context, index) {
+                                  return GestureDetector(
+                                    onTap: () {
+                                      showGeneralDialog(
+                                        context: context,
+                                        barrierDismissible: true,
+                                        barrierLabel: "Dismiss",
+                                        transitionDuration: const Duration(milliseconds: 200),
+                                        pageBuilder: (context, anim1, anim2) {
+                                          return _FullscreenImageViewer(
+                                            imageWidget: _buildBase64Image(
+                                              base64Images[index],
+                                              width: MediaQuery.of(context).size.width,
+                                              height: MediaQuery.of(context).size.height,
+                                            ),
+                                          );
+                                        },
+                                        transitionBuilder: (context, anim1, anim2, child) {
+                                          return FadeTransition(
+                                            opacity: anim1,
+                                            child: child,
+                                          );
+                                        },
+                                      );
+                                    },
+                                    child: Container(
+                                      margin: const EdgeInsets.only(right: 8),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: _buildBase64Image(base64Images[index]),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ] else ...[
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[100],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.image_not_supported, color: Colors.grey[400]),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'No photos available',
+                                    style: TextStyle(color: Colors.grey[600]),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 16),
-                        if (markerData['description'] != null && markerData['description'].isNotEmpty) ...[
-                          const Text(
-                            'Description',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.black,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              markerData['description'],
-                              style: const TextStyle(fontSize: 14, color: Colors.white),
-                            ),
-                          ),
+                          const SizedBox(height: 24),
+                          const Divider(),
                           const SizedBox(height: 16),
-                        ],
-                        if (base64Images.isNotEmpty) ...[
                           const Text(
-                            'Photos',
+                            'User Reviews',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            height: 150,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: base64Images.length,
-                              itemBuilder: (context, index) {
-                                return Container(
-                                  margin: const EdgeInsets.only(right: 8),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: _buildBase64Image(base64Images[index]),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ] else ...[
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.image_not_supported, color: Colors.grey[400]),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'No photos available',
-                                  style: TextStyle(color: Colors.grey[600]),
-                                ),
-                              ],
-                            ),
-                          ),
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
+                  color: Theme.of(context).brightness == Brightness.dark ? Colors.black : Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                  child: Row(
                     children: [
                       if (!isMyMarker && addedById.isNotEmpty) ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: FriendButton(
-                                userId: addedById,
-                                userName: addedByName,
-                                isMyMarker: isMyMarker,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: MessageButton(
-                                recipientId: addedById,
-                                recipientName: addedByName,
-                                foodMarkerId: markerId,
-                                foodName: '$pollutionType Report',
-                                isMyMarker: isMyMarker,
-                              ),
-                            ),
-                          ],
+                        Expanded(
+                          child: FriendButton(
+                            userId: addedById,
+                            userName: addedByName,
+                            isMyMarker: isMyMarker,
+                          ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: MessageButton(
+                            recipientId: addedById,
+                            recipientName: addedByName,
+                            foodMarkerId: markerId,
+                            foodName: pollutionType,
+                            isMyMarker: isMyMarker,
+                          ),
+                        ),
                       ],
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              child: const Text('Close'),
+                      if (isMyMarker) ...[
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              Navigator.of(context).pop();
+                              final shouldDelete = await _showDeleteConfirmationDialog(
+                                pollutionType,
+                                addedByName,
+                                isMyMarker
+                              );
+                              if (shouldDelete == true) {
+                                await _deleteMarker(markerId, pollutionType);
+                              }
+                            },
+                            icon: const Icon(Icons.delete, size: 18),
+                            label: const Text('Delete', style: TextStyle(fontSize: 16)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
                             ),
                           ),
-                          if (isMyMarker) ...[
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () async {
-                                  Navigator.of(context).pop();
-                                  final shouldDelete = await _showDeleteConfirmationDialog(
-                                    '$pollutionType Report',
-                                    addedByName,
-                                    isMyMarker
-                                  );
-                                  if (shouldDelete == true) {
-                                    await _deleteMarker(markerId, '$pollutionType Report');
-                                  }
-                                },
-                                icon: const Icon(Icons.delete, size: 18),
-                                label: const Text('Delete'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                  foregroundColor: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -1627,18 +1621,18 @@ Future<void> _addPollutionMarker() async {
     );
   }
 
-  Widget _buildBase64Image(String base64String) {
+  Widget _buildBase64Image(String base64String, {double width = 150, double height = 150}) {
     try {
       final bytes = base64Decode(base64String);
       return Image.memory(
         bytes,
-        width: 150,
-        height: 150,
+        width: width,
+        height: height,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
           return Container(
-            width: 150,
-            height: 150,
+            width: width,
+            height: height,
             color: Colors.grey[200],
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1655,8 +1649,8 @@ Future<void> _addPollutionMarker() async {
       );
     } catch (e) {
       return Container(
-        width: 150,
-        height: 150,
+        width: width,
+        height: height,
         color: Colors.grey[200],
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1846,6 +1840,11 @@ Future<void> _addPollutionMarker() async {
     final shouldSignOut = await _showSignOutDialog();
     if (shouldSignOut == true) {
       try {
+        // Close the bottom sheet first
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+        
         await _authService.signOut();
         if (mounted) {
           Navigator.of(context).pushReplacementNamed('/login');
@@ -3081,6 +3080,114 @@ Future<void> _addPollutionMarker() async {
         currentIndex: _currentIndex,
         onTap: _onNavTap,
       ),
+    );
+  }
+}
+
+class _FullscreenImageViewer extends StatefulWidget {
+  final Widget imageWidget;
+  const _FullscreenImageViewer({required this.imageWidget});
+
+  @override
+  State<_FullscreenImageViewer> createState() => _FullscreenImageViewerState();
+}
+
+class _FullscreenImageViewerState extends State<_FullscreenImageViewer> with SingleTickerProviderStateMixin {
+  double _dragOffset = 0;
+  late AnimationController _controller;
+  late Animation<double> _animation;
+  bool _isDismissing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 200));
+    _animation = Tween<double>(begin: 0, end: 1).animate(_controller);
+  }
+
+  void _onVerticalDragUpdate(DragUpdateDetails details) {
+    setState(() {
+      _dragOffset += details.primaryDelta ?? 0;
+    });
+  }
+
+  void _onVerticalDragEnd(DragEndDetails details) {
+    if (_dragOffset > 100 && !_isDismissing) {
+      _isDismissing = true;
+      _controller.forward().then((_) {
+        if (mounted) Navigator.of(context).pop();
+      });
+    } else {
+      setState(() {
+        _dragOffset = 0;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        double slide = _dragOffset * (1 - _animation.value) + MediaQuery.of(context).size.height * _animation.value;
+        return GestureDetector(
+          onVerticalDragUpdate: _onVerticalDragUpdate,
+          onVerticalDragEnd: _onVerticalDragEnd,
+          child: Material(
+            color: Colors.black,
+            child: Stack(
+              children: [
+                Transform.translate(
+                  offset: Offset(0, slide),
+                  child: Center(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return Container(
+                          width: screenSize.width,
+                          height: screenSize.height,
+                          child: InteractiveViewer(
+                            minScale: 0.5,
+                            maxScale: 3.0,
+                            child: Center(
+                              child: AspectRatio(
+                                aspectRatio: 1.0, // This will be overridden by the image's natural aspect ratio
+                                child: widget.imageWidget,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 40,
+                  right: 24,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Colors.black,
+                      shape: BoxShape.circle,
+                    ),
+                    padding: const EdgeInsets.all(2),
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

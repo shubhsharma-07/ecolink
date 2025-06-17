@@ -92,10 +92,11 @@ class _FriendButtonState extends State<FriendButton> {
         return OutlinedButton.icon(
           onPressed: _sendFriendRequest,
           icon: const Icon(Icons.person_add, size: 18),
-          label: const Text('Add Friend'),
+          label: const Text('Add Friend', style: TextStyle(fontSize: 14)),
           style: OutlinedButton.styleFrom(
             foregroundColor: Colors.blue,
             side: const BorderSide(color: Colors.blue),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
         );
 
@@ -103,10 +104,11 @@ class _FriendButtonState extends State<FriendButton> {
         return OutlinedButton.icon(
           onPressed: _cancelFriendRequest,
           icon: const Icon(Icons.schedule, size: 18),
-          label: const Text('Pending'),
+          label: const Text('Pending', style: TextStyle(fontSize: 14)),
           style: OutlinedButton.styleFrom(
             foregroundColor: Colors.orange,
             side: const BorderSide(color: Colors.orange),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
         );
 
@@ -120,21 +122,21 @@ class _FriendButtonState extends State<FriendButton> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 ),
-                child: const Text('Accept', style: TextStyle(fontSize: 12)),
+                child: const Text('Accept', style: TextStyle(fontSize: 14)),
               ),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 8),
             Expanded(
               child: OutlinedButton(
                 onPressed: _declineFriendRequest,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.red,
                   side: const BorderSide(color: Colors.red),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 ),
-                child: const Text('Decline', style: TextStyle(fontSize: 12)),
+                child: const Text('Decline', style: TextStyle(fontSize: 14)),
               ),
             ),
           ],
@@ -142,7 +144,7 @@ class _FriendButtonState extends State<FriendButton> {
 
       case FriendshipStatus.friends:
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: Colors.green[50],
             border: Border.all(color: Colors.green),
@@ -151,14 +153,14 @@ class _FriendButtonState extends State<FriendButton> {
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.check_circle, size: 16, color: Colors.green),
-              SizedBox(width: 4),
+              Icon(Icons.check_circle, size: 18, color: Colors.green),
+              SizedBox(width: 8),
               Text(
                 'Friends',
                 style: TextStyle(
                   color: Colors.green,
                   fontWeight: FontWeight.w500,
-                  fontSize: 12,
+                  fontSize: 14,
                 ),
               ),
             ],

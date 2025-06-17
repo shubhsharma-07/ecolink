@@ -245,25 +245,29 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         // Logo, not in a circle, bigger and cleaner
         Image.asset(
           'assets/logo.png',
-          height: 70,
+          height: 80,
           fit: BoxFit.contain,
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         Text(
           'EcoLink',
           style: TextStyle(
-            fontSize: 26,
+            fontSize: 28,
             fontWeight: FontWeight.bold,
-            color: Colors.grey[800],
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : Colors.grey[800],
             letterSpacing: 1.2,
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         Text(
           _isLogin ? 'Welcome back!' : 'Create your account',
           style: TextStyle(
-            fontSize: 15,
-            color: Colors.grey[600],
+            fontSize: 16,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : Colors.grey[600],
           ),
         ),
       ],

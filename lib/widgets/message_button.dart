@@ -39,24 +39,32 @@ class MessageButton extends StatelessWidget {
     return OutlinedButton.icon(
       onPressed: () => _showMessageDialog(context),
       icon: const Icon(Icons.message, size: 18),
-      label: const Text('Message'),
+      label: const Text('Message', style: TextStyle(fontSize: 14)),
       style: OutlinedButton.styleFrom(
         foregroundColor: Colors.blue,
         side: const BorderSide(color: Colors.blue),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
 
   /// Shows the message composition dialog
   void _showMessageDialog(BuildContext context) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (BuildContext dialogContext) {
-        return MessageDialog(
-          recipientId: recipientId,
-          recipientName: recipientName,
-          foodMarkerId: foodMarkerId,
-          foodName: foodName,
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(dialogContext).viewInsets.bottom,
+          ),
+          child: MessageBottomSheet(
+            recipientId: recipientId,
+            recipientName: recipientName,
+            foodMarkerId: foodMarkerId,
+            foodName: foodName,
+          ),
         );
       },
     );
@@ -65,7 +73,7 @@ class MessageButton extends StatelessWidget {
 
 /// A dialog widget for composing and sending messages
 /// Includes food item context and message composition interface
-class MessageDialog extends StatefulWidget {
+class MessageBottomSheet extends StatefulWidget {
   /// The unique identifier of the message recipient
   final String recipientId;
   
@@ -78,7 +86,7 @@ class MessageDialog extends StatefulWidget {
   /// The name of the food item being discussed
   final String foodName;
 
-  const MessageDialog({
+  const MessageBottomSheet({
     super.key,
     required this.recipientId,
     required this.recipientName,
@@ -87,10 +95,10 @@ class MessageDialog extends StatefulWidget {
   });
 
   @override
-  _MessageDialogState createState() => _MessageDialogState();
+  State<MessageBottomSheet> createState() => _MessageBottomSheetState();
 }
 
-class _MessageDialogState extends State<MessageDialog> {
+class _MessageBottomSheetState extends State<MessageBottomSheet> {
   final TextEditingController _messageController = TextEditingController();
   final MessagingService _messagingService = MessagingService();
   bool _isLoading = false;
@@ -103,101 +111,107 @@ class _MessageDialogState extends State<MessageDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Row(
-        children: [
-          const Icon(Icons.message, color: Colors.blue),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text('Message ${widget.recipientName}'),
-          ),
-        ],
-      ),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return SafeArea(
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).dialogBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+        child: Stack(
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange[200]!),
-              ),
-              child: Row(
+            SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.restaurant, color: Colors.orange[700], size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  Row(
+                    children: [
+                      const Icon(Icons.message, color: Colors.blue),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text('Message ${widget.recipientName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange[200]!),
+                    ),
+                    child: Row(
                       children: [
-                        Text(
-                          'About: ${widget.foodName}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange[700],
-                          ),
-                        ),
-                        Text(
-                          'Messaging ${widget.recipientName}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
+                        Icon(Icons.restaurant, color: Colors.orange[700], size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'About: ${widget.foodName}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange[700],
+                                ),
+                              ),
+                              Text(
+                                'Messaging ${widget.recipientName}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  const Text('Your message:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _messageController,
+                    decoration: InputDecoration(
+                      hintText: 'Hi! I\'m interested in your ${widget.foodName}...',
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.chat_bubble_outline),
+                    ),
+                    maxLines: 4,
+                    textCapitalization: TextCapitalization.sentences,
+                    autofocus: false,
+                  ),
+                  const SizedBox(height: 80), // Space for floating button
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            const Text(
-              'Your message:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _messageController,
-              decoration: InputDecoration(
-                hintText: 'Hi! I\'m interested in your ${widget.foodName}...',
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.chat_bubble_outline),
+            Positioned(
+              bottom: 0,
+              right: 0,
+              child: FloatingActionButton.extended(
+                onPressed: _isLoading ? null : _sendMessage,
+                label: Text(_isLoading ? 'Sending...' : 'Send Message'),
+                icon: _isLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.send),
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
               ),
-              maxLines: 4,
-              textCapitalization: TextCapitalization.sentences,
-              autofocus: true,
             ),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton.icon(
-          onPressed: _isLoading ? null : _sendMessage,
-          icon: _isLoading 
-            ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : const Icon(Icons.send, size: 16),
-          label: Text(_isLoading ? 'Sending...' : 'Send Message'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue,
-            foregroundColor: Colors.white,
-          ),
-        ),
-      ],
     );
   }
 

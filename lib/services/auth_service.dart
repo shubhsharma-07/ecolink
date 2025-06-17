@@ -109,10 +109,21 @@ class AuthService {
   /// Signs out the current user and clears the session
   Future<void> signOut() async {
     try {
+      // Clear any cached user data first
+      await _database.child('users').child(_auth.currentUser?.uid ?? '').get().then((snapshot) {
+        if (snapshot.exists) {
+          snapshot.ref.remove();
+        }
+      });
+      
+      // Sign out from Firebase Auth
       await _auth.signOut();
-      await Future.delayed(const Duration(milliseconds: 300));
+      
+      // Add a delay to ensure all cleanup is complete
+      await Future.delayed(const Duration(milliseconds: 500));
     } catch (e) {
       print('Error signing out: $e');
+      // Force sign out even if there's an error
       await _auth.signOut();
     }
   }
@@ -236,10 +247,24 @@ class AuthService {
   /// Useful for logging out and cleaning up
   Future<void> clearAuthState() async {
     try {
+      // Clear any existing user data
+      if (_auth.currentUser != null) {
+        await _database.child('users').child(_auth.currentUser!.uid).get().then((snapshot) {
+          if (snapshot.exists) {
+            snapshot.ref.remove();
+          }
+        });
+      }
+      
+      // Sign out
       await signOut();
-      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Add a longer delay to ensure complete cleanup
+      await Future.delayed(const Duration(milliseconds: 1000));
     } catch (e) {
       print('Error clearing auth state: $e');
+      // Force sign out even if there's an error
+      await _auth.signOut();
     }
   }
 }
